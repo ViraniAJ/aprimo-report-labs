@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Bot, Check, ChevronDown, ChevronRight, KeyRound, Loader2, Send, Sparkles, Square, Trash2, X, TriangleAlert } from "lucide-react"
+import { Bot, Check, ChevronDown, ChevronRight, KeyRound, Loader2, Plug, PlugZap, Send, Sparkles, Square, Trash2, X, TriangleAlert } from "lucide-react"
+import { MCP_CONFIGURED, readMcpTokens, getMcpToken, startMcpConsent, clearMcpTokens } from "@/lib/mcp-auth"
 import { Button } from "@/components/ui/button"
 import { RankedBars, TrendChart } from "@/components/report-labs/charts"
 import type { DateRange, DateRangeKey } from "@/lib/analytics"
@@ -185,6 +186,14 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const [mcpEnabled, setMcpEnabled] = useState(false)
+
+  useEffect(() => {
+    const refresh = () => setMcpEnabled(!!readMcpTokens(context.environment))
+    refresh()
+    window.addEventListener("aprimo:mcp-changed", refresh)
+    return () => window.removeEventListener("aprimo:mcp-changed", refresh)
+  }, [context.environment])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
@@ -201,6 +210,7 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
       const ac = new AbortController()
       abortRef.current = ac
       try {
+        const mcpToken = mcpEnabled ? await getMcpToken(context.environment) : null
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -208,6 +218,7 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
           body: JSON.stringify({
             environment: context.environment,
             token: context.accessToken,
+            mcpToken: mcpToken ?? undefined,
             messages: history.map((m) => ({ role: m.role, content: m.content })),
             context: {
               reportId: context.reportId,
@@ -276,7 +287,7 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
         abortRef.current = null
       }
     },
-    [busy, messages, context],
+    [busy, messages, context, mcpEnabled],
   )
 
   const stop = () => abortRef.current?.abort()
@@ -298,6 +309,17 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
+        {MCP_CONFIGURED && (
+          mcpEnabled ? (
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={clearMcpTokens} title="Aprimo tools are enabled for this session. Click to disable.">
+              <PlugZap className="h-3.5 w-3.5 mr-1 text-signal-foreground" style={{ color: "var(--rl-good)" }} /> Aprimo tools on
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => startMcpConsent(context.environment)} title="Grant the assistant read-only access to Aprimo's MCP tools, as you.">
+              <Plug className="h-3.5 w-3.5 mr-1" /> Enable Aprimo tools
+            </Button>
+          )
+        )}
         {messages.length > 0 && (
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={clear} title="Clear conversation">
             <Trash2 className="h-3.5 w-3.5" />

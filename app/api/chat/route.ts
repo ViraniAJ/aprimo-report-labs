@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod"
+import { betaTool } from "@anthropic-ai/sdk/helpers/beta/json-schema"
+import { McpClient } from "@/lib/mcp"
 import { z } from "zod"
 import { createClient } from "aprimo-js"
 import { analyticsBaseUrl, getAnalyticsMeta, toGuid, analyticsId, type AnalyticsQuery } from "@/lib/analytics"
@@ -87,6 +89,7 @@ export async function POST(req: NextRequest) {
   let body: {
     environment?: string
     token?: string
+    mcpToken?: string
     messages?: { role: "user" | "assistant"; content: string }[]
     context?: { reportId?: string; dateRangeKey?: string; dateRange?: [string, string] | null; collectionName?: string | null }
   }
@@ -95,7 +98,7 @@ export async function POST(req: NextRequest) {
   } catch {
     return Response.json({ error: "bad_request", message: "Invalid JSON body" }, { status: 400 })
   }
-  const { environment, token, messages, context } = body
+  const { environment, token, mcpToken, messages, context } = body
   if (!environment || !token || !Array.isArray(messages) || messages.length === 0) {
     return Response.json({ error: "bad_request", message: "Missing environment, token, or messages" }, { status: 400 })
   }
@@ -263,6 +266,36 @@ export async function POST(req: NextRequest) {
         }),
       })
 
+      // ── Aprimo MCP tools (read-only allowlist), when the user has consented ──
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mcpTools: any[] = []
+      let mcpNote = "Aprimo MCP tools are not enabled for this user; use the analytics and record tools only."
+      if (mcpToken) {
+        try {
+          const mcp = new McpClient(environment, mcpToken)
+          await mcp.initialize()
+          const defs = await mcp.listAllowedTools()
+          for (const def of defs) {
+            const schema = { ...(def.inputSchema as Record<string, unknown>), type: "object" } as { type: "object"; [k: string]: unknown }
+            mcpTools.push(
+              betaTool({
+                name: def.name,
+                description: def.description ?? def.name,
+                inputSchema: schema,
+                run: traced(def.name, async (input: unknown) => {
+                  const r = await mcp.callTool(def.name, (input ?? {}) as Record<string, unknown>)
+                  if (r.isError) throw new Error(r.text.slice(0, 500))
+                  return r.text
+                }),
+              }),
+            )
+          }
+          mcpNote = `Aprimo MCP tools are enabled (${defs.length} read-only tools: ${defs.map((d) => d.name).join(", ")}). Prefer list_records and get_record_metadata for titles, status, and metadata; they return proper titles and deep links. Use search_aprimo for keyword relevance. Analytics questions still go through query_analytics.`
+        } catch (e) {
+          mcpNote = `Aprimo MCP tools could not be connected (${e instanceof Error ? e.message : String(e)}); use the analytics and record tools only.`
+        }
+      }
+
       // ── Dynamic context (kept out of the cached prefix) ───────────────────
       const report = REPORTS.find((r) => r.id === context?.reportId)
       const today = new Date().toISOString().slice(0, 10)
@@ -272,6 +305,7 @@ export async function POST(req: NextRequest) {
         context?.dateRange ? `The report date range is ${context.dateRange[0]} to ${context.dateRange[1]} (${context.dateRangeKey}).` : "The report date range is all time.",
         context?.collectionName ? `The reports are scoped to the collection "${context.collectionName}".` : "",
         `Available standard reports: ${REPORTS.map((r) => r.title).join(", ")}. When a standard report answers the question, mention it by name.`,
+        mcpNote,
       ]
         .filter(Boolean)
         .join("\n")
@@ -287,7 +321,7 @@ export async function POST(req: NextRequest) {
             { type: "text", text: dynamic },
           ],
           messages: history,
-          tools: [getAnalyticsSchema, queryAnalyticsTool, countRecords, searchRecords, getRecordTitles, listContentTypes, listCollections],
+          tools: [getAnalyticsSchema, queryAnalyticsTool, countRecords, searchRecords, getRecordTitles, listContentTypes, listCollections, ...mcpTools],
           max_iterations: MAX_TOOL_ITERATIONS,
           stream: true,
         })

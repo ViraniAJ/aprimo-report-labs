@@ -5,6 +5,8 @@ import { useReportParams } from "@/components/report-labs/report-context"
 import { ReportCard, LoadingBlock } from "@/components/report-labs/ui"
 import { queryAnalytics, str, toGuid, analyticsId } from "@/lib/analytics"
 import { cardExpander } from "@/lib/core"
+import { Button } from "@/components/ui/button"
+import { MCP_CONFIGURED, readMcpTokens, getMcpToken, startMcpConsent, clearMcpTokens } from "@/lib/mcp-auth"
 
 // Shows what the APIs actually return for a handful of records, so preview and
 // lookup problems can be diagnosed on screen instead of guessed at.
@@ -155,6 +157,7 @@ export function Diagnostics() {
 
   return (
     <div className="flex flex-col gap-4">
+      <McpBridgeCheck />
       <ReportCard title="What the APIs return" subtitle="Three top-viewed records via analytics id lookup, and three recent records with files via search">
         {loading ? (
           <LoadingBlock />
@@ -191,5 +194,84 @@ export function Diagnostics() {
         )}
       </ReportCard>
     </div>
+  )
+}
+
+
+interface McpCheck {
+  server?: { name?: string; version?: string }
+  totalTools?: number
+  allowedTools?: string[]
+  missingFromServer?: string[]
+  sample?: { isError: boolean; preview: string }
+  ms?: number
+  error?: string
+}
+
+/** Proves the MCP bridge end to end without the model: consent, token, server, allowlist, one call. */
+function McpBridgeCheck() {
+  const p = useReportParams()
+  const [enabled, setEnabled] = useState(false)
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState<McpCheck | null>(null)
+
+  useEffect(() => {
+    const refresh = () => setEnabled(!!readMcpTokens(p.environment))
+    refresh()
+    window.addEventListener("aprimo:mcp-changed", refresh)
+    return () => window.removeEventListener("aprimo:mcp-changed", refresh)
+  }, [p.environment])
+
+  const run = async () => {
+    setRunning(true)
+    setResult(null)
+    try {
+      const token = await getMcpToken(p.environment)
+      if (!token) {
+        setResult({ error: "No MCP token. Enable Aprimo tools first." })
+        return
+      }
+      const res = await fetch("/api/aprimo/mcp-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ environment: p.environment, token }) })
+      setResult(await res.json())
+    } catch (e) {
+      setResult({ error: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <ReportCard
+      title="Aprimo MCP bridge"
+      subtitle={MCP_CONFIGURED ? "Second consent (scope mcp), server-side bridge, and the read-only tool allowlist" : "Not configured: set NEXT_PUBLIC_APRIMO_MCP_CLIENT_ID and APRIMO_MCP_CLIENT_SECRET"}
+      actions={
+        MCP_CONFIGURED ? (
+          <div className="flex items-center gap-2">
+            {enabled ? (
+              <>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={run} disabled={running}>{running ? "Checking…" : "Run check"}</Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={clearMcpTokens}>Disable</Button>
+              </>
+            ) : (
+              <Button size="sm" className="h-7 text-xs" onClick={() => startMcpConsent(p.environment)}>Enable Aprimo tools</Button>
+            )}
+          </div>
+        ) : undefined
+      }
+    >
+      <div className="text-xs font-mono break-all flex flex-col gap-1">
+        <div>consent: {enabled ? "granted (token stored in this browser)" : "not granted"}</div>
+        {result?.error && <div className="text-destructive">error: {result.error}</div>}
+        {result && !result.error && (
+          <>
+            <div>server: {result.server?.name} {result.server?.version} · {result.totalTools} tools exposed · {result.ms} ms</div>
+            <div>allowlisted and available ({result.allowedTools?.length}): {result.allowedTools?.join(", ")}</div>
+            {result.missingFromServer && result.missingFromServer.length > 0 && <div className="text-muted-foreground">allowlisted but not on server: {result.missingFromServer.join(", ")}</div>}
+            <div>sample list_records (3 most recently modified){result.sample?.isError ? " · ERROR" : ""}:</div>
+            <pre className="whitespace-pre-wrap bg-muted rounded p-2 max-h-64 overflow-auto">{result.sample?.preview}</pre>
+          </>
+        )}
+      </div>
+    </ReportCard>
   )
 }

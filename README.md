@@ -14,7 +14,7 @@ Live reporting and a natural-language assistant that extend Aprimo DAM. A standa
 | Library | Library Composition · Library Growth · Content Freshness · Duplicate Assets |
 | Reference | Analytics Data Model |
 
-**An assistant** that runs Claude with read-only tools (analytics schema and queries, record counts and search, title resolution, content types, collections), streams answers with tables and inline charts, and shows every query it ran.
+**An assistant** that runs Claude with read-only tools (analytics schema and queries, record counts and search, title resolution, content types, collections), streams answers with tables and inline charts, and shows every query it ran. With an MCP registration configured, users can also grant it a read-only allowlist of Aprimo's MCP tools (records, collections, classifications, field definitions, and marketing operations lookups) through a second consent, still running as themselves.
 
 ## Setup
 
@@ -33,6 +33,8 @@ Deploy to Vercel with the same variables. Without the Aprimo variables, users ad
 | `NEXT_PUBLIC_APRIMO_CLIENT_ID` | Recommended | PKCE registration client id |
 | `APRIMO_CLIENT_SECRET` | If the registration has one | Server-side only |
 | `ANTHROPIC_API_KEY` | For the assistant | Server-side only |
+| `NEXT_PUBLIC_APRIMO_MCP_CLIENT_ID` | For Aprimo tools in the assistant | Client id of an MCP-type registration with redirect URI `/oauth/mcp-callback` |
+| `APRIMO_MCP_CLIENT_SECRET` | With the above | Server-side only |
 | `REPORT_LABS_MODEL` | No | Defaults to `claude-opus-5` |
 | `NEXT_PUBLIC_RECORD_LABEL_FIELD` | No | Internal field name used as the record label in rankings. Falls back to the record title, then the master file name |
 | `NEXT_PUBLIC_EDITOR_TOOLS_URL` | No | Base URL of an Editor Tools deployment; adds a "Resolve in Editor Tools" link on the Duplicates report |
