@@ -35,11 +35,21 @@ Deploy to Vercel with the same variables. Without the Aprimo variables, users ad
 | `ANTHROPIC_API_KEY` | For the assistant | Server-side only |
 | `NEXT_PUBLIC_APRIMO_MCP_CLIENT_ID` | For Aprimo tools in the assistant | Client id of an MCP-type registration with redirect URI `/oauth/mcp-callback` |
 | `APRIMO_MCP_CLIENT_SECRET` | With the above | Server-side only |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | For saved questions and the usage log | Server-side only; injected by the Vercel Supabase integration. Apply `supabase/schema.sql` once |
 | `REPORT_LABS_MODEL` | No | Defaults to `claude-opus-5` |
 | `NEXT_PUBLIC_RECORD_LABEL_FIELD` | No | Internal field name used as the record label in rankings. Falls back to the record title, then the master file name |
 | `NEXT_PUBLIC_EDITOR_TOOLS_URL` | No | Base URL of an Editor Tools deployment; adds a "Resolve in Editor Tools" link on the Duplicates report |
 
 Duplicate Assets needs two global, indexed, single-line text fields named `_Checksum` and `_Filename`, populated by rule references (`<ref:record file="master" out="CRC32"/>` and `out="filename"`) that reset on master file change. The report explains this when the fields are missing.
+
+## Persistence
+
+Report Labs works with no database. With Supabase configured it adds two tables, both server-side only with row level security on and no policies:
+
+- `saved_questions`: questions a user bookmarks in the assistant, scoped to their Aprimo user id and environment. Pin, re-run, delete.
+- `assistant_log`: one row per assistant question with the tools called, token usage, duration, and any error. No Aprimo data beyond what the user typed.
+
+The user is identified by verifying the Aprimo access token's signature against the environment's published keys and reading the DAM user claims. No Aprimo API call is made for identity.
 
 ## Layout
 
@@ -47,6 +57,8 @@ Duplicate Assets needs two global, indexed, single-line text fields named `_Chec
 app/                 routes: / (reports), /oauth/callback, /api/aprimo/token, /api/chat
 components/reports/  one file per report
 components/report-labs/  shared report UI, charts, assistant panel
-lib/                 analytics + core API helpers, report registry, export
+lib/                 analytics + core API helpers, report registry, export, MCP client
+lib/server/          service-role Supabase client and Aprimo token verification
+supabase/            schema.sql
 context/             Aprimo connection context
 ```

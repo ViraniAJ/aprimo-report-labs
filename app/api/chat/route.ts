@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk"
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod"
 import { betaTool } from "@anthropic-ai/sdk/helpers/beta/json-schema"
 import { McpClient } from "@/lib/mcp"
+import { serviceDb } from "@/lib/server/supabase"
+import { identify } from "@/lib/server/identity"
 import { z } from "zod"
 import { createClient } from "aprimo-js"
 import { analyticsBaseUrl, getAnalyticsMeta, toGuid, analyticsId, type AnalyticsQuery } from "@/lib/analytics"
@@ -112,6 +114,11 @@ export async function POST(req: NextRequest) {
 
   const encoder = new TextEncoder()
   let toolSeq = 0
+  const toolNames: string[] = []
+  const startedAt = Date.now()
+  let answerChars = 0
+  // Identity for the usage log; resolved in parallel with the first model call.
+  const identityPromise = serviceDb() ? identify(environment, token).catch(() => null) : Promise.resolve(null)
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -126,6 +133,7 @@ export async function POST(req: NextRequest) {
       const traced = <I, O>(name: string, fn: (input: I) => Promise<O>) => async (input: I): Promise<string> => {
         const id = ++toolSeq
         const started = Date.now()
+        toolNames.push(name)
         emit({ type: "tool_start", id, name, input })
         try {
           const out = await fn(input)
@@ -312,6 +320,35 @@ export async function POST(req: NextRequest) {
 
       const history = messages.slice(-MAX_HISTORY).map((m) => ({ role: m.role, content: m.content }))
 
+      // Usage log: one row per question, written after the answer completes.
+      const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? ""
+      async function logRun(o: { usage: { input: number; output: number; cacheRead: number } | null; error: string | null }) {
+        const db = serviceDb()
+        if (!db) return
+        const who = await identityPromise
+        if (!who) return
+        try {
+          await db.from("assistant_log").insert({
+            environment: who.environment,
+            user_id: who.userId,
+            user_login: who.login || null,
+            question: lastUser.slice(0, 4000),
+            report_id: context?.reportId ?? null,
+            date_range: context?.dateRangeKey ?? null,
+            mcp_enabled: !!mcpToken,
+            tools: toolNames,
+            answer_chars: answerChars,
+            input_tokens: o.usage?.input ?? null,
+            output_tokens: o.usage?.output ?? null,
+            cache_read_tokens: o.usage?.cacheRead ?? null,
+            duration_ms: Date.now() - startedAt,
+            error: o.error,
+          })
+        } catch (e) {
+          console.error("[assistant_log]", e)
+        }
+      }
+
       try {
         const runner = anthropic.beta.messages.toolRunner({
           model: MODEL,
@@ -329,7 +366,10 @@ export async function POST(req: NextRequest) {
         let usage = { input: 0, output: 0, cacheRead: 0 }
         for await (const messageStream of runner) {
           for await (const event of messageStream) {
-            if (event.type === "content_block_delta" && event.delta.type === "text_delta") emit({ type: "text", text: event.delta.text })
+            if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+              answerChars += event.delta.text.length
+              emit({ type: "text", text: event.delta.text })
+            }
           }
           const msg = await messageStream.finalMessage()
           usage = {
@@ -341,12 +381,14 @@ export async function POST(req: NextRequest) {
           if (msg.stop_reason === "refusal") emit({ type: "text", text: "\n\nI can't help with that request." })
         }
         emit({ type: "done", usage })
+        await logRun({ usage, error: null })
       } catch (e) {
         let message = e instanceof Error ? e.message : String(e)
         if (e instanceof Anthropic.AuthenticationError) message = "The Anthropic API key was rejected. Check ANTHROPIC_API_KEY on the server."
         else if (e instanceof Anthropic.RateLimitError) message = "The Anthropic API is rate limiting requests. Try again in a moment."
         else if (e instanceof Anthropic.APIError) message = `Anthropic API error ${e.status}: ${e.message}`
         emit({ type: "error", message })
+        await logRun({ usage: null, error: message })
       } finally {
         try {
           controller.close()

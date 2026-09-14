@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Bot, Check, ChevronDown, ChevronRight, KeyRound, Loader2, Plug, PlugZap, Send, Sparkles, Square, Trash2, X, TriangleAlert } from "lucide-react"
+import { Bookmark, BookmarkCheck, Bot, Check, ChevronDown, ChevronRight, KeyRound, Loader2, Pin, PinOff, Plug, PlugZap, Send, Sparkles, Square, Trash2, X, TriangleAlert } from "lucide-react"
+import { toast } from "sonner"
+import { savedQuestions, SavedQuestionsUnavailable, type SavedQuestion } from "@/lib/saved-questions"
 import { MCP_CONFIGURED, readMcpTokens, getMcpToken, startMcpConsent, clearMcpTokens } from "@/lib/mcp-auth"
 import { Button } from "@/components/ui/button"
 import { RankedBars, TrendChart } from "@/components/report-labs/charts"
@@ -187,6 +189,55 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [mcpEnabled, setMcpEnabled] = useState(false)
+  const [saved, setSaved] = useState<SavedQuestion[] | null>(null) // null = unavailable or not loaded
+  const [savedBusy, setSavedBusy] = useState<string | null>(null)
+
+  const reloadSaved = useCallback(async () => {
+    try {
+      setSaved(await savedQuestions.list(context.environment, context.accessToken))
+    } catch (e) {
+      if (!(e instanceof SavedQuestionsUnavailable)) console.error(e)
+      setSaved(null)
+    }
+  }, [context.environment, context.accessToken])
+
+  useEffect(() => {
+    reloadSaved()
+  }, [reloadSaved])
+
+  const saveQuestion = async (question: string) => {
+    setSavedBusy(question)
+    try {
+      const r = await savedQuestions.save(context.environment, context.accessToken, { question, reportId: context.reportId, dateRange: context.dateRangeKey })
+      toast.success(r.existed ? "Already saved" : "Question saved")
+      await reloadSaved()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save")
+    } finally {
+      setSavedBusy(null)
+    }
+  }
+  const runSaved = async (q: SavedQuestion) => {
+    savedQuestions.touch(context.environment, context.accessToken, q.id).then(reloadSaved).catch(() => {})
+    send(q.question)
+  }
+  const togglePin = async (q: SavedQuestion) => {
+    try {
+      await savedQuestions.pin(context.environment, context.accessToken, q.id, !q.pinned)
+      await reloadSaved()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update")
+    }
+  }
+  const removeSaved = async (q: SavedQuestion) => {
+    try {
+      await savedQuestions.remove(context.environment, context.accessToken, q.id)
+      await reloadSaved()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete")
+    }
+  }
+  const isSaved = (question: string) => !!saved?.some((q) => q.question === question)
 
   useEffect(() => {
     const refresh = () => setMcpEnabled(!!readMcpTokens(context.environment))
@@ -356,6 +407,30 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
                 I query the Aprimo Analytics and Core APIs as you, read-only, and show the numbers with tables and charts. Try one of these, or ask your own question.
               </p>
             </div>
+            {saved && saved.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground flex items-center gap-1.5">
+                  <BookmarkCheck className="h-3 w-3" /> Your saved questions
+                </div>
+                {saved.map((q) => (
+                  <div key={q.id} className="group flex items-start gap-1 rounded-md border border-border hover:bg-muted transition-colors">
+                    <button onClick={() => runSaved(q)} className="flex-1 text-left text-xs px-3 py-2 min-w-0">
+                      <span className="block">{q.title ?? q.question}</span>
+                      {q.title && <span className="block text-muted-foreground truncate">{q.question}</span>}
+                    </button>
+                    <span className="flex items-center gap-0.5 pr-1 pt-1 opacity-60 group-hover:opacity-100">
+                      <button onClick={() => togglePin(q)} className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-background" title={q.pinned ? "Unpin" : "Pin to top"}>
+                        {q.pinned ? <Pin className="h-3 w-3" style={{ color: "var(--rl-good)" }} /> : <PinOff className="h-3 w-3 text-muted-foreground" />}
+                      </button>
+                      <button onClick={() => removeSaved(q)} className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-background" title="Delete">
+                        <Trash2 className="h-3 w-3 text-muted-foreground" />
+                      </button>
+                    </span>
+                  </div>
+                ))}
+                <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground mt-2">Try one of these</div>
+              </div>
+            )}
             <div className="flex flex-col gap-1.5">
               {SUGGESTIONS.map((s) => (
                 <button key={s} onClick={() => send(s)} className="text-left text-xs rounded-md border border-border px-3 py-2 hover:bg-muted transition-colors">
@@ -368,8 +443,18 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
         <div className="flex flex-col gap-4">
           {messages.map((m, i) =>
             m.role === "user" ? (
-              <div key={i} className="self-end max-w-[85%] rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm whitespace-pre-wrap">
-                {m.content}
+              <div key={i} className="self-end max-w-[85%] flex items-end gap-1 group">
+                {saved !== null && (
+                  <button
+                    onClick={() => !isSaved(m.content) && saveQuestion(m.content)}
+                    disabled={savedBusy === m.content}
+                    className="h-6 w-6 inline-flex items-center justify-center rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground disabled:opacity-50"
+                    title={isSaved(m.content) ? "Saved" : "Save this question"}
+                  >
+                    {isSaved(m.content) ? <BookmarkCheck className="h-3.5 w-3.5" style={{ color: "var(--rl-good)" }} /> : <Bookmark className="h-3.5 w-3.5" />}
+                  </button>
+                )}
+                <div className="rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm whitespace-pre-wrap">{m.content}</div>
               </div>
             ) : (
               <div key={i} className="max-w-full min-w-0">
