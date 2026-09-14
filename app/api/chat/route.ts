@@ -2,8 +2,9 @@ import { NextRequest } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod"
 import { z } from "zod"
-import { createClient, Expander } from "aprimo-js"
-import { analyticsBaseUrl, getAnalyticsMeta, toGuid, type AnalyticsQuery } from "@/lib/analytics"
+import { createClient } from "aprimo-js"
+import { analyticsBaseUrl, getAnalyticsMeta, toGuid, analyticsId, type AnalyticsQuery } from "@/lib/analytics"
+import { cardExpander, toCard, damRecordUrl } from "@/lib/core"
 import { REPORTS } from "@/lib/registry"
 
 // Report Labs assistant. Runs the Claude tool loop server-side with read-only
@@ -47,6 +48,8 @@ Cubes and members verified in this app:
 Call get_analytics_schema to discover further members (for example rendition or department dimensions) before guessing names.
 Query shape: {"measures":[...],"dimensions":[...],"timeDimensions":[{"dimension":"Downloads.downloadDate","granularity":"month","dateRange":["2026-01-01","2026-03-31"]}],"filters":[{"member":"Views.collectionId","operator":"equals","values":["<guid>"]}],"order":{"Downloads.count":"desc"},"limit":10}
 Granularity is day, week, or month. Time-bucketed rows carry the bucket in "<dimension>.<granularity>" as well as "<dimension>". Collection filters need the dashed GUID form.
+Always include a timeDimensions entry with a dateRange on ranking and breakdown queries; in this environment a query with no time dimension can return zero rows. For "all time" use a wide range such as ["2015-01-01", today].
+Record ids from analytics are 32 hex characters, usually uppercase. Pass them to get_record_titles as they are; it handles the form.
 
 ## Core API search expressions (count_records, search_records)
 Syntax: property comparisons joined with AND, OR, NOT. Operators: = <> > >= < <= in contains. Dates are UTC in 'MM/DD/YYYY' quotes.
@@ -56,6 +59,7 @@ Match everything with: NOT id = ''
 
 ## Presenting results
 - Use GitHub-flavoured markdown tables for lists. Right-align numbers by putting them in their own column.
+- When a tool result includes a "link", make the asset title a markdown link to it so the user can open the record in the DAM.
 - For a trend or a ranking, add a chart as a fenced code block with language "chart" containing JSON:
   {"type":"line","title":"Downloads per month","x":"month","series":[{"key":"downloads","label":"Downloads"}],"data":[{"month":"Jan 26","downloads":120}]}
   or {"type":"bar","title":"Top assets by views","x":"label","series":[{"key":"value","label":"Views"}],"data":[{"label":"Hero banner","value":342}]}
@@ -188,26 +192,16 @@ export async function POST(req: NextRequest) {
         description: "Searches DAM records by expression and returns basic details for up to 50 records: id, title, content type, status, created and modified dates, file name and size.",
         inputSchema: z.object({ expression: z.string(), pageSize: z.number().int().min(1).max(50).optional(), page: z.number().int().min(1).optional() }),
         run: traced("search_records", async ({ expression, pageSize, page }) => {
-          const expander = Expander.create()
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .for<any>("Record")
-            .expand("masterfilelatestversion")
-          const res = await aprimo.search.records({ searchExpression: { expression }, page: page ?? 1, pageSize: pageSize ?? 20 } as never, expander as never)
+          const res = await aprimo.search.records({ searchExpression: { expression }, page: page ?? 1, pageSize: pageSize ?? 20 } as never, cardExpander() as never)
           if (!res.ok) throw new Error((res as { error?: { message?: string } }).error?.message ?? "Search failed")
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const data = res.data as unknown as { items?: any[]; totalCount?: number }
           return {
             totalCount: data.totalCount ?? 0,
-            items: (data.items ?? []).map((r) => ({
-              id: r.id,
-              title: r.title,
-              contentType: r.contentType,
-              status: r.status,
-              createdOn: r.createdOn,
-              modifiedOn: r.modifiedOn,
-              fileName: r._embedded?.masterfilelatestversion?.fileName,
-              fileSize: r._embedded?.masterfilelatestversion?.fileSize,
-            })),
+            items: (data.items ?? []).map((r) => {
+              const c = toCard(r)
+              return { id: c.key, title: c.title, contentType: c.contentType, status: c.status, createdOn: c.createdOn, modifiedOn: c.modifiedOn, fileName: c.fileName, fileSize: c.fileSize, link: damRecordUrl(environment, c.key) }
+            }),
           }
         }),
       })
@@ -217,17 +211,16 @@ export async function POST(req: NextRequest) {
         description: "Resolves analytics record ids (32-char hex, no dashes) or GUIDs to titles and content types. Up to 50 ids per call.",
         inputSchema: z.object({ ids: z.array(z.string()).min(1).max(50) }),
         run: traced("get_record_titles", async ({ ids }) => {
-          const out: Array<{ id: string; title?: string; contentType?: string; error?: string }> = []
+          const out: Array<{ id: string; title?: string; contentType?: string; link?: string; error?: string }> = []
           const queue = [...ids]
           const workers = Array.from({ length: 5 }, async () => {
             while (queue.length) {
               const id = queue.shift()!
               try {
-                const res = await aprimo.records.getById(toGuid(id))
+                const res = await aprimo.records.getById(toGuid(id), cardExpander() as never)
                 if (res.ok) {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const r = res.data as any
-                  out.push({ id, title: r.title, contentType: r.contentType })
+                  const c = toCard(res.data)
+                  out.push({ id, title: c.title, contentType: c.contentType, link: damRecordUrl(environment, analyticsId(id)) })
                 } else out.push({ id, error: "not found or no permission" })
               } catch (e) {
                 out.push({ id, error: e instanceof Error ? e.message : String(e) })
