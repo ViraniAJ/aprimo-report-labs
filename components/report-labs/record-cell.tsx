@@ -1,6 +1,7 @@
 "use client"
 
-import { ExternalLink, FileImage, Ban, Lock, Clock, CircleAlert } from "lucide-react"
+import { useState } from "react"
+import { ExternalLink, FileImage, ImageOff, Ban, Lock, Clock, CircleAlert } from "lucide-react"
 import type { RecordCard } from "@/lib/core"
 import { damRecordUrl } from "@/lib/core"
 
@@ -32,6 +33,11 @@ export function RecordCell({ card, fallbackId, environment }: { card?: RecordCar
   }
 
   const title = card?.title ?? shortId
+  return <LoadedCell card={card} fallbackId={fallbackId} environment={environment} title={title} />
+}
+
+function LoadedCell({ card, fallbackId, environment, title }: { card?: RecordCard; fallbackId: string; environment: string; title: string }) {
+  const [imgFailed, setImgFailed] = useState(false)
   return (
     <a
       href={damRecordUrl(environment, card?.id ?? fallbackId)}
@@ -41,9 +47,11 @@ export function RecordCell({ card, fallbackId, environment }: { card?: RecordCar
       title={card?.title ?? fallbackId}
     >
       <span className="h-9 w-9 rounded bg-muted overflow-hidden shrink-0 flex items-center justify-center">
-        {card?.thumbnail ? (
+        {card?.thumbnail && !imgFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={card.thumbnail} alt="" className="h-full w-full object-cover" loading="lazy" />
+          <img src={card.thumbnail} alt="" className="h-full w-full object-cover" loading="lazy" onError={() => setImgFailed(true)} />
+        ) : imgFailed ? (
+          <ImageOff className="h-4 w-4 text-muted-foreground" />
         ) : (
           <FileImage className="h-4 w-4 text-muted-foreground" />
         )}
@@ -52,6 +60,7 @@ export function RecordCell({ card, fallbackId, environment }: { card?: RecordCar
         <span className={`truncate max-w-[280px] group-hover:underline ${card ? "" : "font-mono text-xs text-muted-foreground"}`}>{title}</span>
         {card?.contentType && <span className="text-[11px] text-muted-foreground truncate">{card.contentType}</span>}
         {card && !card.thumbnail && <span className="text-[11px] text-muted-foreground">no preview</span>}
+        {imgFailed && <span className="text-[11px] text-muted-foreground" title={card?.thumbnail}>preview blocked</span>}
       </span>
       <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0" />
     </a>
