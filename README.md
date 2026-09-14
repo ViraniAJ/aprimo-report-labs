@@ -1,6 +1,6 @@
 # Report Labs
 
-Live reporting and a natural-language assistant for Aprimo DAM. A standalone Next.js app that shares its architecture with [Aprimo Editor Tools](https://github.com/Aprimo-Connect/aprimo-editor-tools): PKCE login against Aprimo, the [aprimo-js](https://github.com/Timw255/aprimo-js) SDK for every API call, and Vercel for hosting. Nothing is stored; every query runs as the signed-in user.
+Live reporting and a natural-language assistant that extend Aprimo DAM. A standalone Next.js app that shares its architecture with [Aprimo Editor Tools](https://github.com/Aprimo-Connect/aprimo-editor-tools): PKCE login against Aprimo, the [aprimo-js](https://github.com/Timw255/aprimo-js) SDK for every API call, and Vercel for hosting. Nothing is stored; every query runs as the signed-in user.
 
 > Community project, not maintained or supported by Aprimo.
 

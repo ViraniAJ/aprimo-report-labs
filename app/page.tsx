@@ -268,10 +268,10 @@ function Landing() {
           <div>
             <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">For Aprimo DAM</p>
             <h1 className="text-3xl sm:text-[40px] font-semibold tracking-tight leading-[1.1] max-w-2xl" style={{ textWrap: "balance" }}>
-              The reporting layer your DAM was missing.
+              See how your Aprimo content performs.
             </h1>
             <p className="mt-4 text-base text-muted-foreground max-w-xl leading-relaxed">
-              Twelve live reports over the Aprimo Analytics and Core APIs, and an assistant that answers questions about usage and the library in plain language. Nothing is stored. Everything runs as you.
+              Report Labs extends Aprimo DAM with twelve live reports built on the Analytics and Core APIs, and an assistant that answers questions about usage and the library in plain language. It runs as you, and stores nothing.
             </p>
             <div className="mt-6 flex items-center gap-3">
               <Button onClick={connect}>
@@ -283,8 +283,8 @@ function Landing() {
         </div>
       </section>
       <section className="px-6 pb-16 max-w-5xl mx-auto grid gap-4 sm:grid-cols-3">
-        <Feature icon={<Zap className="h-4 w-4" />} title="Live, not exported" body="Every number is queried the moment you open a report. Change the date range or scope and it re-queries." />
-        <Feature icon={<ShieldCheck className="h-4 w-4" />} title="Your permissions apply" body="Reports and the assistant call Aprimo with your token, so you only ever see what Aprimo lets you see." />
+        <Feature icon={<Zap className="h-4 w-4" />} title="Live from Aprimo" body="Every number is queried from your environment the moment you open a report. Change the date range or scope and it re-queries." />
+        <Feature icon={<ShieldCheck className="h-4 w-4" />} title="Your permissions apply" body="Reports and the assistant call Aprimo with your own login, so you only ever see what Aprimo lets you see." />
         <Feature icon={<Sparkles className="h-4 w-4" />} title="Ask in plain language" body="Which assets were downloaded most last quarter, and by whom? The assistant runs the queries and shows its work." />
       </section>
       <section className="px-6 pb-20 max-w-5xl mx-auto">
