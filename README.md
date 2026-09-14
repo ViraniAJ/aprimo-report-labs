@@ -6,7 +6,7 @@ Live reporting and a natural-language assistant that extend Aprimo DAM. A standa
 
 ## What's inside
 
-**Twelve standard reports** over the Analytics and Core APIs, with a global date range, optional collection scope, and Excel/CSV export on every table.
+**Standard reports** over the Analytics and Core APIs, with a global date range, optional collection scope, and Excel/CSV export on every table.
 
 | Group | Reports |
 |-------|---------|

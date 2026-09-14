@@ -271,7 +271,7 @@ function Landing() {
               See how your Aprimo content performs.
             </h1>
             <p className="mt-4 text-base text-muted-foreground max-w-xl leading-relaxed">
-              Report Labs extends Aprimo DAM with twelve live reports built on the Analytics and Core APIs, and an assistant that answers questions about usage and the library in plain language. It runs as you, and stores nothing.
+              Report Labs extends Aprimo DAM with live reports built on the Analytics and Core APIs, and an assistant that answers questions about usage and the library in plain language. It runs as you, and stores nothing.
             </p>
             <div className="mt-6 flex items-center gap-3">
               <Button onClick={connect}>
