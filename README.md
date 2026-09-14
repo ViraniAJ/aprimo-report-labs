@@ -6,12 +6,12 @@ Live reporting and a natural-language assistant for Aprimo DAM. A standalone Nex
 
 ## What's inside
 
-**Eleven standard reports** over the Analytics and Core APIs, with a global date range, optional collection scope, and Excel/CSV export on every table.
+**Twelve standard reports** over the Analytics and Core APIs, with a global date range, optional collection scope, and Excel/CSV export on every table.
 
 | Group | Reports |
 |-------|---------|
 | Engagement | Executive Overview · Asset Performance · Zero Engagement · User Adoption · Public Link Traffic · Format Demand · Video Performance |
-| Library | Library Composition · Library Growth · Content Freshness |
+| Library | Library Composition · Library Growth · Content Freshness · Duplicate Assets |
 | Reference | Analytics Data Model |
 
 **An assistant** that runs Claude with read-only tools (analytics schema and queries, record counts and search, title resolution, content types, collections), streams answers with tables and inline charts, and shows every query it ran.
@@ -34,6 +34,9 @@ Deploy to Vercel with the same variables. Without the Aprimo variables, users ad
 | `APRIMO_CLIENT_SECRET` | If the registration has one | Server-side only |
 | `ANTHROPIC_API_KEY` | For the assistant | Server-side only |
 | `REPORT_LABS_MODEL` | No | Defaults to `claude-opus-5` |
+| `NEXT_PUBLIC_EDITOR_TOOLS_URL` | No | Base URL of an Editor Tools deployment; adds a "Resolve in Editor Tools" link on the Duplicates report |
+
+Duplicate Assets needs two global, indexed, single-line text fields named `_Checksum` and `_Filename`, populated by rule references (`<ref:record file="master" out="CRC32"/>` and `out="filename"`) that reset on master file change. The report explains this when the fields are missing.
 
 ## Layout
 

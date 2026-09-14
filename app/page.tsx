@@ -26,6 +26,7 @@ import { LibraryComposition } from "@/components/reports/library-composition"
 import { LibraryGrowth } from "@/components/reports/library-growth"
 import { ContentFreshness } from "@/components/reports/content-freshness"
 import { DataModel } from "@/components/reports/data-model"
+import { Duplicates } from "@/components/reports/duplicates"
 
 const COMPONENTS: Record<string, React.ComponentType> = {
   "executive-overview": ExecutiveOverview,
@@ -38,6 +39,7 @@ const COMPONENTS: Record<string, React.ComponentType> = {
   "library-composition": LibraryComposition,
   "library-growth": LibraryGrowth,
   "content-freshness": ContentFreshness,
+  "duplicates": Duplicates,
   "data-model": DataModel,
 }
 
@@ -267,7 +269,7 @@ function Landing() {
               The reporting layer your DAM was missing.
             </h1>
             <p className="mt-4 text-base text-muted-foreground max-w-xl leading-relaxed">
-              Eleven live reports over the Aprimo Analytics and Core APIs, and an assistant that answers questions about usage and the library in plain language. Nothing is stored. Everything runs as you.
+              Twelve live reports over the Aprimo Analytics and Core APIs, and an assistant that answers questions about usage and the library in plain language. Nothing is stored. Everything runs as you.
             </p>
             <div className="mt-6 flex items-center gap-3">
               <Button onClick={connect}>

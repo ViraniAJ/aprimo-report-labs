@@ -100,6 +100,14 @@ export const REPORTS: ReportDef[] = [
     usesDateRange: false,
   },
   {
+    id: "duplicates",
+    title: "Duplicate Assets",
+    group: "Library",
+    description: "Records that share a master file checksum or filename, how many copies exist, and how much storage the redundant copies hold.",
+    sources: ["Core"],
+    usesDateRange: false,
+  },
+  {
     id: "data-model",
     title: "Analytics Data Model",
     group: "Reference",
