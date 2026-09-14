@@ -1,7 +1,7 @@
 // Helpers over the Aprimo DAM Core API (via the aprimo-js SDK) used by
 // Report Labs inventory reports and by the assistant's server tools.
 
-import { Expander, AprimoRateLimitError, type createClient } from "aprimo-js"
+import { Expander, AprimoRateLimitError, AprimoNotFoundError, AprimoForbiddenError, AprimoUnauthorizedError, type createClient } from "aprimo-js"
 import { toGuid, analyticsId } from "./analytics"
 
 export type AprimoClient = ReturnType<typeof createClient>
@@ -37,11 +37,16 @@ export interface RecordCard {
   thumbnail?: string
   fileName?: string
   fileSize?: number
+  /** Set when the record could not be loaded; explains why. */
+  unavailable?: "deleted" | "no-access" | "rate-limited" | "error"
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function toCard(rec: any): RecordCard {
+export function toCard(rec: any): RecordCard {
   const mflv = rec._embedded?.masterfilelatestversion
+  const emb = mflv?._embedded ?? {}
+  // Prefer the thumbnail; fall back to the preview for file types without one.
+  const thumbnail: string | undefined = emb.thumbnail?.uri ?? emb.preview?.uri ?? undefined
   return {
     id: rec.id,
     key: analyticsId(rec.id),
@@ -50,20 +55,20 @@ function toCard(rec: any): RecordCard {
     status: rec.status,
     createdOn: rec.createdOn,
     modifiedOn: rec.modifiedOn,
-    thumbnail: mflv?._embedded?.thumbnail?.uri,
+    thumbnail,
     fileName: mflv?.fileName,
     fileSize: mflv?.fileSize,
   }
 }
 
-const cardExpander = () =>
+export const cardExpander = () =>
   Expander.create()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .for<any>("Record")
     .expand("masterfilelatestversion")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .for<any>("FileVersion")
-    .expand("thumbnail")
+    .expand("thumbnail", "preview")
 
 export async function searchRecordCards(
   client: AprimoClient,
@@ -104,25 +109,35 @@ export const runThrottled = throttled
 /**
  * Resolves titles and thumbnails for analytics record ids. Throttled to avoid
  * 429s and retried on rate limit using the server's retry-after hint.
+ *
+ * Every id gets an entry. Records that cannot be loaded come back with
+ * `unavailable` set so the UI can say why: analytics keeps history for deleted
+ * records, and users may lack read permission on some.
  */
 export async function fetchRecordCards(client: AprimoClient, ids: string[]): Promise<Map<string, RecordCard>> {
   const unique = Array.from(new Set(ids.map(analyticsId))).filter(Boolean)
+  type Outcome = { card: RecordCard } | { why: NonNullable<RecordCard["unavailable"]> }
   const results = await throttled(
-    unique.map((id) => async () => {
-      for (let attempt = 0; attempt < 4; attempt++) {
+    unique.map((id) => async (): Promise<Outcome> => {
+      for (let attempt = 0; attempt < 5; attempt++) {
         const res = await client.records.getById(toGuid(id), cardExpander() as never)
-        if (res.ok) return res.data
-        if (!(res.error instanceof AprimoRateLimitError)) return null
-        const hint = parseInt(String((res.error as AprimoRateLimitError).retryAfter ?? "0"), 10)
-        await new Promise((r) => setTimeout(r, (hint > 0 ? hint : Math.pow(2, attempt)) * 1000))
+        if (res.ok) return { card: toCard(res.data) }
+        const err = res.error
+        if (err instanceof AprimoNotFoundError) return { why: "deleted" }
+        if (err instanceof AprimoForbiddenError || err instanceof AprimoUnauthorizedError) return { why: "no-access" }
+        if (!(err instanceof AprimoRateLimitError)) return { why: "error" }
+        const hint = parseInt(String((err as AprimoRateLimitError).retryAfter ?? "0"), 10)
+        await new Promise((r) => setTimeout(r, (hint > 0 ? hint : 2 * Math.pow(2, attempt)) * 1000))
       }
-      return null
+      return { why: "rate-limited" }
     }),
-    5,
+    3,
   )
   const map = new Map<string, RecordCard>()
   results.forEach((r, i) => {
-    if (r.status === "fulfilled" && r.value) map.set(unique[i], toCard(r.value))
+    const id = unique[i]
+    if (r.status === "fulfilled" && "card" in r.value) map.set(id, r.value.card)
+    else map.set(id, { id: toGuid(id), key: id, title: id, unavailable: r.status === "fulfilled" ? r.value.why : "error" })
   })
   return map
 }
@@ -158,6 +173,7 @@ export async function listCollections(client: AprimoClient): Promise<CollectionI
   return out.sort((a, b) => a.name.localeCompare(b.name))
 }
 
+/** Deep link into the DAM UI. The content item route takes the id without dashes. */
 export function damRecordUrl(environment: string, id: string): string {
-  return `https://${environment}.dam.aprimo.com/dam/records/${toGuid(id)}`
+  return `https://${environment}.dam.aprimo.com/dam/contentitems/${analyticsId(id)}`
 }

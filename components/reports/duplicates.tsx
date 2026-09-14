@@ -66,7 +66,7 @@ function toCard(rec: any): RecordCard & { fileSize: number; fileName: string } {
     status: rec.status,
     createdOn: rec.createdOn,
     modifiedOn: rec.modifiedOn,
-    thumbnail: mflv?._embedded?.thumbnail?.uri,
+    thumbnail: mflv?._embedded?.thumbnail?.uri ?? mflv?._embedded?.preview?.uri,
     fileName: mflv?.fileName ?? "",
     fileSize: Number(mflv?.fileSize ?? 0) || 0,
   }
@@ -161,7 +161,7 @@ export function Duplicates() {
           .expand("fields", "masterfilelatestversion")
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .for<any>("FileVersion")
-          .expand("thumbnail")
+          .expand("thumbnail", "preview")
         const batches: string[][] = []
         for (let i = 0; i < toFetch.length; i += BATCH) batches.push(toFetch.slice(i, i + BATCH))
         const results = await runThrottled(
