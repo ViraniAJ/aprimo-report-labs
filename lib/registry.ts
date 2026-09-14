@@ -115,6 +115,14 @@ export const REPORTS: ReportDef[] = [
     sources: ["Analytics"],
     usesDateRange: false,
   },
+  {
+    id: "diagnostics",
+    title: "Diagnostics",
+    group: "Reference",
+    description: "Raw API responses for a few records: ids, expansions, and whether preview images load. For troubleshooting.",
+    sources: ["Analytics", "Core"],
+    usesDateRange: false,
+  },
 ]
 
 export const REPORT_GROUPS: ReportGroup[] = ["Engagement", "Library", "Reference"]

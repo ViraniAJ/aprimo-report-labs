@@ -27,6 +27,7 @@ import { LibraryGrowth } from "@/components/reports/library-growth"
 import { ContentFreshness } from "@/components/reports/content-freshness"
 import { DataModel } from "@/components/reports/data-model"
 import { Duplicates } from "@/components/reports/duplicates"
+import { Diagnostics } from "@/components/reports/diagnostics"
 
 const COMPONENTS: Record<string, React.ComponentType> = {
   "executive-overview": ExecutiveOverview,
@@ -41,6 +42,7 @@ const COMPONENTS: Record<string, React.ComponentType> = {
   "content-freshness": ContentFreshness,
   "duplicates": Duplicates,
   "data-model": DataModel,
+  "diagnostics": Diagnostics,
 }
 
 const GROUP_ICONS: Record<ReportGroup, React.ComponentType<{ className?: string }>> = {
