@@ -136,8 +136,12 @@ export async function fetchRecordCards(client: AprimoClient, ids: string[]): Pro
   const map = new Map<string, RecordCard>()
   results.forEach((r, i) => {
     const id = unique[i]
-    if (r.status === "fulfilled" && "card" in r.value) map.set(id, r.value.card)
-    else map.set(id, { id: toGuid(id), key: id, title: id, unavailable: r.status === "fulfilled" ? r.value.why : "error" })
+    if (r.status === "fulfilled" && "card" in r.value) {
+      map.set(id, r.value.card)
+      return
+    }
+    const why: NonNullable<RecordCard["unavailable"]> = r.status === "fulfilled" && "why" in r.value ? r.value.why : "error"
+    map.set(id, { id: toGuid(id), key: id, title: id, unavailable: why })
   })
   return map
 }
