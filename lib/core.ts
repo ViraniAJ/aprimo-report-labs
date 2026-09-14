@@ -162,6 +162,12 @@ export async function fetchRecordCards(client: AprimoClient, ids: string[]): Pro
     const why: NonNullable<RecordCard["unavailable"]> = r.status === "fulfilled" && "why" in r.value ? r.value.why : "error"
     map.set(id, { id: toGuid(id), key: id, title: id, unavailable: why })
   })
+  // Analytics returns ids in uppercase; reports look cards up by the raw id
+  // they were given, so alias every original spelling to its normalised entry.
+  for (const raw of ids) {
+    const card = map.get(analyticsId(raw))
+    if (card && !map.has(raw)) map.set(raw, card)
+  }
   return map
 }
 
