@@ -87,10 +87,20 @@ export function Diagnostics() {
       const notes: string[] = []
       const out: Probe[] = []
       try {
-        // 1. Ids as analytics returns them
-        const rows = await queryAnalytics(p.environment, p.authHeader, { measures: ["Views.count"], dimensions: ["Views.recordId"], order: { "Views.count": "desc" }, limit: 3 })
+        // 1. Ids as analytics returns them, with and without a time dimension
+        const end = new Date().toISOString().slice(0, 10)
+        const start = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10)
+        const [noTime, withTime, total] = await Promise.all([
+          queryAnalytics(p.environment, p.authHeader, { measures: ["Views.count"], dimensions: ["Views.recordId"], order: { "Views.count": "desc" }, limit: 3 }).catch((e) => ({ error: String(e) })),
+          queryAnalytics(p.environment, p.authHeader, { measures: ["Views.count"], dimensions: ["Views.recordId"], timeDimensions: [{ dimension: "DateDimension.date", dateRange: [start, end] }], order: { "Views.count": "desc" }, limit: 3 }).catch((e) => ({ error: String(e) })),
+          queryAnalytics(p.environment, p.authHeader, { measures: ["Views.count"] }).catch((e) => ({ error: String(e) })),
+        ])
+        notes.push(`Views.count total, no time dimension: ${Array.isArray(total) ? JSON.stringify(total[0] ?? {}) : total.error}`)
+        notes.push(`Top viewed, no time dimension: ${Array.isArray(noTime) ? `${noTime.length} rows` : noTime.error}`)
+        notes.push(`Top viewed, last 365 days: ${Array.isArray(withTime) ? `${withTime.length} rows` : withTime.error}`)
+        const rows = Array.isArray(withTime) && withTime.length ? withTime : Array.isArray(noTime) ? noTime : []
         const ids = rows.map((r) => str(r["Views.recordId"])).filter(Boolean)
-        notes.push(`Analytics returned ${ids.length} record ids. Sample: ${ids[0] ?? "none"} (length ${ids[0]?.length ?? 0}, lowercase match: ${ids[0] ? String(ids[0] === analyticsId(ids[0])) : "n/a"})`)
+        notes.push(`Sample analytics id: ${ids[0] ?? "none"} (length ${ids[0]?.length ?? 0}, lowercase match: ${ids[0] ? String(ids[0] === analyticsId(ids[0])) : "n/a"})`)
         for (const id of ids) out.push(await probe("analytics top viewed", id))
       } catch (e) {
         notes.push(`Analytics query failed: ${e instanceof Error ? e.message : String(e)}`)
@@ -102,6 +112,14 @@ export function Diagnostics() {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const items = ((res.data as unknown as { items?: any[] }).items ?? []) as any[]
           notes.push(`Search returned ${items.length} records with files.`)
+          // 3. Does getById accept the dashed GUID and the plain 32-char form?
+          if (items[0]?.id) {
+            const plain = String(items[0].id).replace(/-/g, "")
+            const dashed = toGuid(plain)
+            const [a, b] = await Promise.all([p.client.records.getById(dashed), p.client.records.getById(plain)])
+            const describe = (r: { ok: boolean; error?: unknown }) => (r.ok ? "ok" : `failed (${(r.error as { constructor?: { name?: string } })?.constructor?.name ?? "error"})`)
+            notes.push(`getById with dashed id: ${describe(a)} · with plain id: ${describe(b)}`)
+          }
           for (const it of items) {
             const mflv = it._embedded?.masterfilelatestversion
             out.push({

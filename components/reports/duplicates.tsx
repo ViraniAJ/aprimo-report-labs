@@ -61,7 +61,7 @@ function toCard(rec: any): RecordCard & { fileSize: number; fileName: string } {
   return {
     id: rec.id,
     key: String(rec.id).replace(/-/g, "").toLowerCase(),
-    title: rec.title || rec.id,
+    title: rec.title || mflv?.fileName || `${String(rec.id).replace(/-/g, "").slice(0, 8)}…`,
     contentType: rec.contentType,
     status: rec.status,
     createdOn: rec.createdOn,

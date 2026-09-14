@@ -34,6 +34,7 @@ Deploy to Vercel with the same variables. Without the Aprimo variables, users ad
 | `APRIMO_CLIENT_SECRET` | If the registration has one | Server-side only |
 | `ANTHROPIC_API_KEY` | For the assistant | Server-side only |
 | `REPORT_LABS_MODEL` | No | Defaults to `claude-opus-5` |
+| `NEXT_PUBLIC_RECORD_LABEL_FIELD` | No | Internal field name used as the record label in rankings. Falls back to the record title, then the master file name |
 | `NEXT_PUBLIC_EDITOR_TOOLS_URL` | No | Base URL of an Editor Tools deployment; adds a "Resolve in Editor Tools" link on the Duplicates report |
 
 Duplicate Assets needs two global, indexed, single-line text fields named `_Checksum` and `_Filename`, populated by rule references (`<ref:record file="master" out="CRC32"/>` and `out="filename"`) that reset on master file change. The report explains this when the fields are missing.

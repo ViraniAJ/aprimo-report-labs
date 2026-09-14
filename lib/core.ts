@@ -41,16 +41,35 @@ export interface RecordCard {
   unavailable?: "deleted" | "no-access" | "rate-limited" | "error"
 }
 
+/**
+ * Optional internal field name to use as the record label (e.g. "Title" or
+ * "AssetName"). Many environments do not populate the record's own title
+ * property, so the label falls back to the master file name.
+ */
+export const RECORD_LABEL_FIELD = process.env.NEXT_PUBLIC_RECORD_LABEL_FIELD?.trim() || undefined
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function labelFieldValue(rec: any): string | undefined {
+  if (!RECORD_LABEL_FIELD) return undefined
+  const want = RECORD_LABEL_FIELD.toLowerCase()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const f = ((rec._embedded?.fields?.items ?? []) as any[]).find((x) => String(x.fieldName ?? "").toLowerCase() === want || String(x.label ?? "").toLowerCase() === want)
+  const lv = f?.localizedValues?.[0]
+  const v = lv?.value ?? (Array.isArray(lv?.values) ? lv.values[0] : undefined)
+  return v ? String(v) : undefined
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function toCard(rec: any): RecordCard {
   const mflv = rec._embedded?.masterfilelatestversion
   const emb = mflv?._embedded ?? {}
   // Prefer the thumbnail; fall back to the preview for file types without one.
   const thumbnail: string | undefined = emb.thumbnail?.uri ?? emb.preview?.uri ?? undefined
+  const title = labelFieldValue(rec) || rec.title || mflv?.fileName || `${analyticsId(rec.id).slice(0, 8)}…`
   return {
     id: rec.id,
     key: analyticsId(rec.id),
-    title: rec.title || rec.id,
+    title,
     contentType: rec.contentType,
     status: rec.status,
     createdOn: rec.createdOn,
@@ -65,7 +84,7 @@ export const cardExpander = () =>
   Expander.create()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .for<any>("Record")
-    .expand("masterfilelatestversion")
+    .expand(...(RECORD_LABEL_FIELD ? (["masterfilelatestversion", "fields"] as const) : (["masterfilelatestversion"] as const)))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .for<any>("FileVersion")
     .expand("thumbnail", "preview")
