@@ -38,3 +38,23 @@ create table if not exists assistant_log (
 );
 create index if not exists assistant_log_env_idx on assistant_log (environment, created_at desc);
 alter table assistant_log enable row level security;
+
+-- Saved reports: a declarative data spec plus, for rich dashboards, an HTML
+-- view that only ever receives data from the host page (sandboxed, no network).
+create table if not exists saved_reports (
+  id           uuid primary key default gen_random_uuid(),
+  environment  text not null,
+  user_id      text not null,
+  user_login   text,
+  title        text not null,
+  description  text,
+  view         text not null default 'html' check (view in ('html', 'standard')),
+  spec         jsonb not null,
+  html         text,
+  source       text not null default 'assistant',
+  pinned       boolean not null default false,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+create index if not exists saved_reports_user_idx on saved_reports (environment, user_id, pinned desc, updated_at desc);
+alter table saved_reports enable row level security;

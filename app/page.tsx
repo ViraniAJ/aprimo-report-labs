@@ -14,6 +14,10 @@ import { DATE_RANGE_OPTIONS, getDateRange, getPriorRange, getGranularity, type D
 import { listCollections, type CollectionInfo } from "@/lib/core"
 import { ReportProvider, type ReportParams } from "@/components/report-labs/report-context"
 import { AssistantPanel } from "@/components/report-labs/assistant-panel"
+import { SavedReportView } from "@/components/report-labs/saved-report-view"
+import { savedReports, SavedReportsUnavailable, type SavedReportSummary } from "@/lib/saved-reports"
+import { Bookmark, Pin, Trash2 } from "lucide-react"
+import { toast } from "sonner"
 
 import { ExecutiveOverview } from "@/components/reports/executive-overview"
 import { AssetPerformance } from "@/components/reports/asset-performance"
@@ -57,12 +61,30 @@ function Workspace() {
   const searchParams = useSearchParams()
   const reportId = searchParams.get("report")
   const report = getReport(reportId)
+  const savedId = searchParams.get("saved")
 
   const [dateRangeKey, setDateRangeKey] = useState<DateRangeKey>("30d")
   const [collectionId, setCollectionId] = useState<string | null>(null)
   const [collections, setCollections] = useState<CollectionInfo[]>([])
   const [refreshToken, setRefreshToken] = useState(0)
   const [assistantOpen, setAssistantOpen] = useState(false)
+  const [saved, setSaved] = useState<SavedReportSummary[] | null>(null)
+
+  const reloadSaved = useCallback(async () => {
+    if (!connection || !isConnected) return
+    try {
+      setSaved(await savedReports.list(connection.environment, connection.accessToken))
+    } catch (e) {
+      if (!(e instanceof SavedReportsUnavailable)) console.error(e)
+      setSaved(null)
+    }
+  }, [connection, isConnected])
+
+  useEffect(() => {
+    reloadSaved()
+    window.addEventListener("rl:saved-reports-changed", reloadSaved)
+    return () => window.removeEventListener("rl:saved-reports-changed", reloadSaved)
+  }, [reloadSaved])
 
   useEffect(() => {
     if (!client || !isConnected) return
@@ -76,6 +98,7 @@ function Workspace() {
   }, [client, isConnected])
 
   const navigate = useCallback((id: string | null) => router.push(id ? `/?report=${id}` : "/"), [router])
+  const openSaved = useCallback((id: string) => router.push(`/?saved=${id}`), [router])
 
   const authHeader = getAuthHeader()
   const params: ReportParams | null = useMemo(() => {
@@ -100,6 +123,26 @@ function Workspace() {
 
   const Component = report ? COMPONENTS[report.id] : null
   const collectionName = collections.find((c) => c.id === collectionId)?.name ?? null
+  const savedReport = savedId ? saved?.find((r) => r.id === savedId) ?? null : null
+  const pinSaved = async (r: SavedReportSummary) => {
+    try {
+      await savedReports.pin(params.environment, params.accessToken, r.id, !r.pinned)
+      reloadSaved()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update")
+    }
+  }
+  const deleteSaved = async (r: SavedReportSummary) => {
+    if (!window.confirm(`Delete saved report "${r.title}"?`)) return
+    try {
+      await savedReports.remove(params.environment, params.accessToken, r.id)
+      toast.success("Report deleted")
+      reloadSaved()
+      if (savedId === r.id) navigate(null)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete")
+    }
+  }
 
   return (
     <div className="flex-1 flex min-h-0">
@@ -111,6 +154,28 @@ function Workspace() {
           >
             <Table2 className="h-4 w-4" /> All reports
           </button>
+          {saved && saved.length > 0 && (
+            <div className="mt-3">
+              <div className="px-4 py-1 text-[11px] uppercase tracking-[0.12em] text-muted-foreground flex items-center gap-1.5">
+                <Bookmark className="h-3 w-3" /> Saved reports
+              </div>
+              {saved.map((r) => {
+                const active = savedId === r.id
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => openSaved(r.id)}
+                    className={`w-full text-left pl-4 pr-3 py-1.5 text-sm flex items-center gap-2 transition-colors ${active ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}
+                    title={r.description ?? r.title}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${active ? "bg-signal" : "bg-transparent"}`} />
+                    <span className="truncate">{r.title}</span>
+                    {r.pinned && <Pin className="h-3 w-3 ml-auto shrink-0 text-muted-foreground" />}
+                  </button>
+                )
+              })}
+            </div>
+          )}
           {REPORT_GROUPS.map((g) => {
             const Icon = GROUP_ICONS[g]
             return (
@@ -153,11 +218,28 @@ function Workspace() {
                   <span>{report.group}</span>
                 </>
               )}
+              {savedId && (
+                <>
+                  <ChevronRight className="h-3 w-3" />
+                  <span>Saved reports</span>
+                </>
+              )}
             </div>
-            <h1 className="text-lg font-semibold leading-tight truncate tracking-tight">{report ? report.title : "All reports"}</h1>
+            <h1 className="text-lg font-semibold leading-tight truncate tracking-tight">{report ? report.title : savedReport ? savedReport.title : savedId ? "Saved report" : "All reports"}</h1>
             {report && <p className="text-xs text-muted-foreground truncate">{report.description}</p>}
+            {savedReport?.description && <p className="text-xs text-muted-foreground truncate">{savedReport.description}</p>}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {savedReport && (
+              <>
+                <Button variant="ghost" size="sm" className="h-8" onClick={() => pinSaved(savedReport)} title={savedReport.pinned ? "Unpin" : "Pin to top"}>
+                  <Pin className={`h-4 w-4 ${savedReport.pinned ? "" : "text-muted-foreground"}`} style={savedReport.pinned ? { color: "var(--rl-good)" } : undefined} />
+                </Button>
+                <Button variant="ghost" size="sm" className="h-8 text-muted-foreground" onClick={() => deleteSaved(savedReport)} title="Delete saved report">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            )}
             {(!report || report.usesDateRange) && (
               <select value={dateRangeKey} onChange={(e) => setDateRangeKey(e.target.value as DateRangeKey)} className="h-8 rounded-md border border-border bg-card px-2 text-sm" title="Date range">
                 {DATE_RANGE_OPTIONS.map((o) => (
@@ -173,7 +255,7 @@ function Workspace() {
                 ))}
               </select>
             )}
-            {report && (
+            {(report || savedId) && (
               <Button variant="ghost" size="sm" className="h-8" onClick={() => setRefreshToken((t) => t + 1)} title="Refresh">
                 <RefreshCw className="h-4 w-4" />
               </Button>
@@ -187,7 +269,13 @@ function Workspace() {
         <div className="flex-1 min-h-0 flex">
           <div className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6">
             <ReportProvider value={params}>
-              {Component ? <Component key={`${report!.id}-${refreshToken}`} /> : <Catalogue onOpen={navigate} onAsk={() => setAssistantOpen(true)} />}
+              {Component ? (
+                <Component key={`${report!.id}-${refreshToken}`} />
+              ) : savedId ? (
+                <SavedReportView key={savedId} id={savedId} />
+              ) : (
+                <Catalogue onOpen={navigate} onAsk={() => setAssistantOpen(true)} saved={saved ?? []} onOpenSaved={openSaved} />
+              )}
             </ReportProvider>
           </div>
           {assistantOpen && (
@@ -212,9 +300,28 @@ function Workspace() {
   )
 }
 
-function Catalogue({ onOpen, onAsk }: { onOpen: (id: string) => void; onAsk: () => void }) {
+function Catalogue({ onOpen, onAsk, saved, onOpenSaved }: { onOpen: (id: string) => void; onAsk: () => void; saved: SavedReportSummary[]; onOpenSaved: (id: string) => void }) {
   return (
     <div className="flex flex-col gap-7 max-w-6xl">
+      {saved.length > 0 && (
+        <section>
+          <h3 className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground flex items-center gap-1.5 mb-2">
+            <Bookmark className="h-3.5 w-3.5" /> Your saved reports
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {saved.map((r) => (
+              <button key={r.id} onClick={() => onOpenSaved(r.id)} className="text-left rounded-lg border border-border bg-card p-4 hover:border-foreground/40 transition-colors flex flex-col gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium truncate">{r.title}</span>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono shrink-0">{r.view === "html" ? "dashboard" : "report"}</Badge>
+                </div>
+                {r.description && <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{r.description}</p>}
+                <span className="text-[11px] text-muted-foreground mt-auto">Updated {new Date(r.updated_at).toLocaleDateString()}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="flex flex-col md:flex-row md:items-center gap-4">
         <p className="text-sm text-muted-foreground flex-1 max-w-2xl">
           Every figure is queried from Aprimo when you open a report, as you, with your permissions. Pick a report, or ask in plain language.

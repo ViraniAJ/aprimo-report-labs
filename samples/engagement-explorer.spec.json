@@ -1,0 +1,198 @@
+{
+  "title": "Engagement Explorer",
+  "description": "Interactive dashboard: engagement trend with smoothing, top assets by views or downloads with thumbnails, concentration meter, most active users. Sliders and filters work on the live data.",
+  "version": 1,
+  "defaultRange": "90d",
+  "queries": [
+    {
+      "id": "trend_views",
+      "kind": "analytics",
+      "query": {
+        "measures": [
+          "Views.count"
+        ],
+        "timeDimensions": [
+          {
+            "dimension": "DateDimension.date",
+            "granularity": "$granularity",
+            "dateRange": "$range"
+          }
+        ],
+        "order": {
+          "DateDimension.date": "asc"
+        },
+        "limit": 1000
+      }
+    },
+    {
+      "id": "trend_downloads",
+      "kind": "analytics",
+      "query": {
+        "measures": [
+          "Downloads.count"
+        ],
+        "timeDimensions": [
+          {
+            "dimension": "Downloads.downloadDate",
+            "granularity": "$granularity",
+            "dateRange": "$range"
+          }
+        ],
+        "order": {
+          "Downloads.downloadDate": "asc"
+        },
+        "limit": 1000
+      }
+    },
+    {
+      "id": "trend_plays",
+      "kind": "analytics",
+      "query": {
+        "measures": [
+          "PreviewPlaybacks.count"
+        ],
+        "timeDimensions": [
+          {
+            "dimension": "PreviewPlaybacks.previewPlaybackDate",
+            "granularity": "$granularity",
+            "dateRange": "$range"
+          }
+        ],
+        "order": {
+          "PreviewPlaybacks.previewPlaybackDate": "asc"
+        },
+        "limit": 1000
+      }
+    },
+    {
+      "id": "prior_views",
+      "kind": "analytics",
+      "query": {
+        "measures": [
+          "Views.count"
+        ],
+        "timeDimensions": [
+          {
+            "dimension": "DateDimension.date",
+            "dateRange": "$priorRange"
+          }
+        ]
+      }
+    },
+    {
+      "id": "prior_downloads",
+      "kind": "analytics",
+      "query": {
+        "measures": [
+          "Downloads.count"
+        ],
+        "timeDimensions": [
+          {
+            "dimension": "Downloads.downloadDate",
+            "dateRange": "$priorRange"
+          }
+        ]
+      }
+    },
+    {
+      "id": "top_views",
+      "kind": "analytics",
+      "resolveTitles": "Views.recordId",
+      "query": {
+        "measures": [
+          "Views.count"
+        ],
+        "dimensions": [
+          "Views.recordId"
+        ],
+        "timeDimensions": [
+          {
+            "dimension": "DateDimension.date",
+            "dateRange": "$range"
+          }
+        ],
+        "order": {
+          "Views.count": "desc"
+        },
+        "limit": 50
+      }
+    },
+    {
+      "id": "top_downloads",
+      "kind": "analytics",
+      "resolveTitles": "Downloads.recordId",
+      "query": {
+        "measures": [
+          "Downloads.count"
+        ],
+        "dimensions": [
+          "Downloads.recordId"
+        ],
+        "timeDimensions": [
+          {
+            "dimension": "Downloads.downloadDate",
+            "dateRange": "$range"
+          }
+        ],
+        "order": {
+          "Downloads.count": "desc"
+        },
+        "limit": 50
+      }
+    },
+    {
+      "id": "users_views",
+      "kind": "analytics",
+      "query": {
+        "measures": [
+          "Views.count"
+        ],
+        "dimensions": [
+          "Users.loginId"
+        ],
+        "timeDimensions": [
+          {
+            "dimension": "DateDimension.date",
+            "dateRange": "$range"
+          }
+        ],
+        "order": {
+          "Views.count": "desc"
+        },
+        "limit": 100
+      }
+    },
+    {
+      "id": "users_downloads",
+      "kind": "analytics",
+      "query": {
+        "measures": [
+          "Downloads.count"
+        ],
+        "dimensions": [
+          "Users.loginId"
+        ],
+        "timeDimensions": [
+          {
+            "dimension": "Downloads.downloadDate",
+            "dateRange": "$range"
+          }
+        ],
+        "order": {
+          "Downloads.count": "desc"
+        },
+        "limit": 100
+      }
+    },
+    {
+      "id": "library_total",
+      "kind": "search-count",
+      "expression": "NOT id = ''"
+    },
+    {
+      "id": "library_files",
+      "kind": "search-count",
+      "expression": "FileCount > 0"
+    }
+  ]
+}
