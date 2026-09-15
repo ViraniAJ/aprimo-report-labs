@@ -16,7 +16,7 @@ import { ReportProvider, type ReportParams } from "@/components/report-labs/repo
 import { AssistantPanel } from "@/components/report-labs/assistant-panel"
 import { SavedReportView } from "@/components/report-labs/saved-report-view"
 import { savedReports, SavedReportsUnavailable, type SavedReportSummary, type SavedReport } from "@/lib/saved-reports"
-import { Bookmark, Pin, Trash2 } from "lucide-react"
+import { Bookmark, Pencil, Pin, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { ExecutiveOverview } from "@/components/reports/executive-overview"
@@ -249,6 +249,9 @@ function Workspace() {
           <div className="flex items-center gap-2 flex-wrap">
             {savedReport && (
               <>
+                <Button variant="ghost" size="sm" className="h-8" onClick={() => setAssistantOpen(true)} title="Edit this report with the assistant">
+                  <Pencil className="h-4 w-4" />
+                </Button>
                 <Button variant="ghost" size="sm" className="h-8" onClick={() => pinSaved(savedReport)} title={savedReport.pinned ? "Unpin" : "Pin to top"}>
                   <Pin className={`h-4 w-4 ${savedReport.pinned ? "" : "text-muted-foreground"}`} style={savedReport.pinned ? { color: "var(--rl-good)" } : undefined} />
                 </Button>
