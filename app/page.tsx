@@ -15,7 +15,7 @@ import { listCollections, type CollectionInfo } from "@/lib/core"
 import { ReportProvider, type ReportParams } from "@/components/report-labs/report-context"
 import { AssistantPanel } from "@/components/report-labs/assistant-panel"
 import { SavedReportView } from "@/components/report-labs/saved-report-view"
-import { savedReports, SavedReportsUnavailable, type SavedReportSummary } from "@/lib/saved-reports"
+import { savedReports, SavedReportsUnavailable, type SavedReportSummary, type SavedReport } from "@/lib/saved-reports"
 import { Bookmark, Pin, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -69,6 +69,23 @@ function Workspace() {
   const [refreshToken, setRefreshToken] = useState(0)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [saved, setSaved] = useState<SavedReportSummary[] | null>(null)
+  const [openSavedReport, setOpenSavedReport] = useState<SavedReport | null>(null)
+
+  // Full copy of the saved report being viewed, so the assistant can edit it in place.
+  useEffect(() => {
+    if (!savedId || !connection || !isConnected) {
+      setOpenSavedReport(null)
+      return
+    }
+    let cancelled = false
+    savedReports
+      .get(connection.environment, connection.accessToken, savedId)
+      .then((r) => !cancelled && setOpenSavedReport(r))
+      .catch(() => !cancelled && setOpenSavedReport(null))
+    return () => {
+      cancelled = true
+    }
+  }, [savedId, connection, isConnected, saved])
 
   const reloadSaved = useCallback(async () => {
     if (!connection || !isConnected) return
@@ -284,6 +301,9 @@ function Workspace() {
                 context={{
                   environment: params.environment,
                   accessToken: params.accessToken,
+                  authHeader: params.authHeader,
+                  client: params.client,
+                  editingReport: openSavedReport && openSavedReport.id === savedId && openSavedReport.html ? { id: openSavedReport.id, title: openSavedReport.title, description: openSavedReport.description, spec: openSavedReport.spec, html: openSavedReport.html } : undefined,
                   reportId: report?.id,
                   reportTitle: report?.title,
                   dateRangeKey,

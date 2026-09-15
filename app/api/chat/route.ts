@@ -5,6 +5,7 @@ import { betaTool } from "@anthropic-ai/sdk/helpers/beta/json-schema"
 import { McpClient } from "@/lib/mcp"
 import { serviceDb } from "@/lib/server/supabase"
 import { identify } from "@/lib/server/identity"
+import { validateSpec } from "@/lib/report-spec-types"
 import { z } from "zod"
 import { createClient } from "aprimo-js"
 import { analyticsBaseUrl, getAnalyticsMeta, toGuid, analyticsId, type AnalyticsQuery } from "@/lib/analytics"
@@ -27,6 +28,7 @@ type ChatEvent =
   | { type: "text"; text: string }
   | { type: "tool_start"; id: number; name: string; input: unknown }
   | { type: "tool_end"; id: number; name: string; ms: number; summary: string; error?: boolean }
+  | { type: "report"; report: { title: string; description: string | null; spec: unknown; html: string } }
   | { type: "done"; usage?: { input: number; output: number; cacheRead: number } }
   | { type: "error"; message: string }
 
@@ -68,7 +70,24 @@ Match everything with: NOT id = ''
   {"type":"line","title":"Downloads per month","x":"month","series":[{"key":"downloads","label":"Downloads"}],"data":[{"month":"Jan 26","downloads":120}]}
   or {"type":"bar","title":"Top assets by views","x":"label","series":[{"key":"value","label":"Views"}],"data":[{"label":"Hero banner","value":342}]}
   Bar charts rank horizontally; keep them to 12 rows or fewer. Line charts may carry up to 4 series.
-- End with at most one short suggested follow-up question when it would genuinely help.`
+- End with at most one short suggested follow-up question when it would genuinely help.
+
+## Building dashboards the user can save (propose_report)
+When the user asks for a dashboard, a report to keep, something with sliders or filters, or to change a dashboard you already proposed, call propose_report instead of describing it. The user sees a live preview and can save it under their reports. Then reply with two or three sentences on what it shows and how to adjust it. Never paste the HTML into your reply.
+
+A report has two parts:
+1. spec: named read-only queries the host runs as the user on every open and refresh. Shape:
+   {"version":1,"defaultRange":"90d","queries":[
+     {"id":"trend","kind":"analytics","query":{"measures":["Downloads.count"],"timeDimensions":[{"dimension":"Downloads.downloadDate","granularity":"$granularity","dateRange":"$range"}],"order":{"Downloads.downloadDate":"asc"},"limit":1000}},
+     {"id":"top","kind":"analytics","resolveTitles":"Downloads.recordId","query":{"measures":["Downloads.count"],"dimensions":["Downloads.recordId"],"timeDimensions":[{"dimension":"Downloads.downloadDate","dateRange":"$range"}],"order":{"Downloads.count":"desc"},"limit":25}},
+     {"id":"total","kind":"search-count","expression":"NOT id = ''"},
+     {"id":"recent","kind":"search","expression":"CreatedOn >= $daysAgo(30)","pageSize":20},
+     {"id":"types","kind":"content-type-counts"}
+   ]}
+   Placeholders: "$range" and "$priorRange" for dateRange, "$granularity" for granularity, and in search expressions $daysAgo(N) and $today. The user's date-range selector drives "$range". resolveTitles names the record-id member; those rows gain _title, _thumbnail, _link, _contentType (or _unavailable). Up to 20 queries; keep limits modest.
+2. html: the view. A fragment (style, markup, script; no html/head/body tags). It runs in a sandbox with no network and no credentials; it only receives data. Contract: window.ReportLabs.onData(function(payload){...}) is called on load and on every refresh. payload = { results: { [queryId]: { rows?, count?, error?, ms } }, range: [from,to]|null, priorRange, granularity: "day"|"week"|"month", dateRangeKey, environment, refreshedAt }. Analytics rows keep member names as keys ("Downloads.count"); time buckets are under "<dimension>.<granularity>" as well as "<dimension>" (read either). Search rows: { id, title, contentType, status, createdOn, modifiedOn, thumbnail, fileName, fileSize, link }. Content-type rows: { contentType, count }.
+   Draw charts with inline SVG and plain script (no libraries). Style with the host's CSS variables so it matches the app in light and dark: --background, --foreground, --card, --muted, --muted-foreground, --border, --primary, --primary-foreground, --font-sans, --font-mono, and the chart palette --rl-1 (views/blue), --rl-2 (downloads/orange), --rl-3 (impressions/aqua), --rl-4 (plays/yellow), --rl-5 (users/violet), --rl-seq for single-hue magnitude, --rl-good, --rl-bad. Controls (range sliders, text filters, segmented toggles) work on the delivered data and re-render instantly. Show a loading state until data arrives, handle empty results and per-query errors, escape all text, keep it under 40 KB, and include a footer with the range and refreshedAt.
+   When updating a dashboard you proposed earlier, call propose_report again with the full revised report and the same title.`
 
 function summarize(v: unknown): string {
   try {
@@ -93,7 +112,13 @@ export async function POST(req: NextRequest) {
     token?: string
     mcpToken?: string
     messages?: { role: "user" | "assistant"; content: string }[]
-    context?: { reportId?: string; dateRangeKey?: string; dateRange?: [string, string] | null; collectionName?: string | null }
+    context?: {
+      reportId?: string
+      dateRangeKey?: string
+      dateRange?: [string, string] | null
+      collectionName?: string | null
+      editingReport?: { id: string; title: string; description?: string | null; spec: unknown; html: string }
+    }
   }
   try {
     body = await req.json()
@@ -274,6 +299,24 @@ export async function POST(req: NextRequest) {
         }),
       })
 
+      const proposeReport = betaZodTool({
+        name: "propose_report",
+        description: "Proposes a saveable dashboard: a spec of read-only queries plus an HTML view that receives the data. The user sees a live preview and can save it. Use for any request for a dashboard, a report to keep, or interactive controls.",
+        inputSchema: z.object({
+          title: z.string().min(1).max(160),
+          description: z.string().max(600).optional(),
+          spec: z.object({ version: z.literal(1), defaultRange: z.string().optional(), queries: z.array(z.record(z.string(), z.unknown())).min(1).max(20) }),
+          html: z.string().min(50).max(120_000),
+        }),
+        run: traced("propose_report", async (input) => {
+          if (!validateSpec(input.spec)) throw new Error("Spec rejected: every query needs an id and a kind of analytics (with query), search-count / search (with expression), or content-type-counts; limits must be 5000 or less.")
+          if (!/ReportLabs\.onData\s*\(/.test(input.html)) throw new Error("HTML rejected: it must register window.ReportLabs.onData(function(payload){...}) to receive data.")
+          if (/<\s*(script|link)[^>]+src=/i.test(input.html)) throw new Error("HTML rejected: external scripts and stylesheets are not allowed; inline everything.")
+          emit({ type: "report", report: { title: input.title, description: input.description ?? null, spec: input.spec, html: input.html } })
+          return `Report "${input.title}" is now previewed for the user with ${input.spec.queries.length} queries. They can save it. Reply briefly; do not repeat the HTML.`
+        }),
+      })
+
       // ── Aprimo MCP tools (read-only allowlist), when the user has consented ──
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mcpTools: any[] = []
@@ -314,6 +357,9 @@ export async function POST(req: NextRequest) {
         context?.collectionName ? `The reports are scoped to the collection "${context.collectionName}".` : "",
         `Available standard reports: ${REPORTS.map((r) => r.title).join(", ")}. When a standard report answers the question, mention it by name.`,
         mcpNote,
+        context?.editingReport
+          ? `The user has their saved dashboard "${context.editingReport.title}" open and may ask you to change it. Its current spec and view are below. For any change, call propose_report with the FULL revised report, keeping the same title unless asked to rename; saving will update this report in place.\n\nCURRENT SPEC:\n${JSON.stringify(context.editingReport.spec)}\n\nCURRENT HTML:\n${context.editingReport.html.slice(0, 60_000)}`
+          : "",
       ]
         .filter(Boolean)
         .join("\n")
@@ -352,13 +398,13 @@ export async function POST(req: NextRequest) {
       try {
         const runner = anthropic.beta.messages.toolRunner({
           model: MODEL,
-          max_tokens: 8000,
+          max_tokens: 24000,
           system: [
             { type: "text", text: STATIC_SYSTEM, cache_control: { type: "ephemeral" } },
             { type: "text", text: dynamic },
           ],
           messages: history,
-          tools: [getAnalyticsSchema, queryAnalyticsTool, countRecords, searchRecords, getRecordTitles, listContentTypes, listCollections, ...mcpTools],
+          tools: [getAnalyticsSchema, queryAnalyticsTool, countRecords, searchRecords, getRecordTitles, listContentTypes, listCollections, proposeReport, ...mcpTools],
           max_iterations: MAX_TOOL_ITERATIONS,
           stream: true,
         })

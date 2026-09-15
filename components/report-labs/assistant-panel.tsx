@@ -6,6 +6,12 @@ import remarkGfm from "remark-gfm"
 import { Bookmark, BookmarkCheck, Bot, Check, ChevronDown, ChevronRight, KeyRound, Loader2, Pin, PinOff, Plug, PlugZap, Send, Sparkles, Square, Trash2, X, TriangleAlert } from "lucide-react"
 import { toast } from "sonner"
 import { savedQuestions, SavedQuestionsUnavailable, type SavedQuestion } from "@/lib/saved-questions"
+import { savedReports } from "@/lib/saved-reports"
+import { runSpec, type RunOutput } from "@/lib/report-spec"
+import type { ReportSpec } from "@/lib/report-spec-types"
+import { HtmlReportFrame } from "@/components/report-labs/html-report-frame"
+import type { AprimoClient } from "@/lib/core"
+import { useRouter } from "next/navigation"
 import { MCP_CONFIGURED, readMcpTokens, getMcpToken, startMcpConsent, clearMcpTokens } from "@/lib/mcp-auth"
 import { Button } from "@/components/ui/button"
 import { RankedBars, TrendChart } from "@/components/report-labs/charts"
@@ -21,16 +27,28 @@ interface ToolEvent {
   done: boolean
 }
 
+interface ProposedReport {
+  title: string
+  description: string | null
+  spec: ReportSpec
+  html: string
+}
+
 interface ChatMessage {
   role: "user" | "assistant"
   content: string
   tools?: ToolEvent[]
   error?: string
+  report?: ProposedReport
 }
 
 export interface AssistantContext {
   environment: string
   accessToken: string
+  authHeader?: string
+  client?: AprimoClient
+  /** The saved report currently open, so the assistant can edit it in place. */
+  editingReport?: { id: string; title: string; description: string | null; spec: ReportSpec; html: string }
   reportId?: string
   reportTitle?: string
   dateRangeKey: DateRangeKey
@@ -276,6 +294,7 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
               dateRangeKey: context.dateRangeKey,
               dateRange: context.dateRange ?? null,
               collectionName: context.collectionName ?? null,
+              editingReport: context.editingReport ?? undefined,
             },
           }),
         })
@@ -321,6 +340,7 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
                 ...m,
                 tools: (m.tools ?? []).map((t) => (t.id === Number(ev.id) ? { ...t, done: true, summary: String(ev.summary ?? ""), ms: Number(ev.ms), error: !!ev.error } : t)),
               }))
+            else if (ev.type === "report") update((m) => ({ ...m, report: ev.report as ProposedReport }))
             else if (ev.type === "error") update((m) => ({ ...m, error: String(ev.message) }))
           }
         }
@@ -354,7 +374,7 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
         <div className="min-w-0">
           <div className="text-sm font-medium leading-tight">Ask Report Labs</div>
           <div className="text-[11px] text-muted-foreground truncate">
-            {context.reportTitle ? `Context: ${context.reportTitle}` : "Ask anything about usage or the library"}
+            {context.editingReport ? `Editing saved report: ${context.editingReport.title}` : context.reportTitle ? `Context: ${context.reportTitle}` : "Ask anything about usage or the library"}
             {context.dateRange ? ` · ${context.dateRange[0]} to ${context.dateRange[1]}` : " · all time"}
           </div>
         </div>
@@ -459,6 +479,7 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
             ) : (
               <div key={i} className="max-w-full min-w-0">
                 {m.tools && <ToolTrace tools={m.tools} />}
+                {m.report && <ProposalCard report={m.report} context={context} />}
                 {m.content ? (
                   <div className="prose-sm max-w-none break-words">
                     <Markdown text={m.content} />
@@ -511,6 +532,93 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
           </Button>
         )}
       </form>
+    </div>
+  )
+}
+
+
+// ── Proposed dashboard: live preview + save ──────────────────────────────────
+
+function ProposalCard({ report, context }: { report: ProposedReport; context: AssistantContext }) {
+  const router = useRouter()
+  const [data, setData] = useState<RunOutput | null>(null)
+  const [running, setRunning] = useState(false)
+  const [savedId, setSavedId] = useState<string | null>(context.editingReport?.id ?? null)
+  const [saving, setSaving] = useState(false)
+  const [open, setOpen] = useState(true)
+
+  const run = useCallback(async () => {
+    if (!context.client || !context.authHeader) return
+    setRunning(true)
+    try {
+      setData(await runSpec(report.spec, { environment: context.environment, authHeader: context.authHeader, client: context.client, dateRangeKey: context.dateRangeKey }))
+    } finally {
+      setRunning(false)
+    }
+  }, [report.spec, context.client, context.authHeader, context.environment, context.dateRangeKey])
+
+  useEffect(() => {
+    run()
+  }, [run])
+
+  const save = async (asNew = false) => {
+    setSaving(true)
+    try {
+      const item = await savedReports.save(context.environment, context.accessToken, {
+        id: asNew ? undefined : savedId ?? undefined,
+        title: report.title,
+        description: report.description ?? undefined,
+        view: "html",
+        spec: report.spec,
+        html: report.html,
+        source: "assistant",
+      })
+      setSavedId(item.id)
+      window.dispatchEvent(new Event("rl:saved-reports-changed"))
+      toast.success(!asNew && savedId ? "Saved report updated" : "Saved to your reports")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const failed = data ? Object.values(data.results).filter((r) => r.error).length : 0
+  return (
+    <div className="my-2 rounded-lg border border-border bg-card overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
+        <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium truncate">{report.title}</div>
+          <div className="text-[11px] text-muted-foreground truncate">
+            {report.spec.queries.length} queries{data ? ` · refreshed ${new Date(data.refreshedAt).toLocaleTimeString()}` : ""}{failed ? ` · ${failed} failed` : ""}
+          </div>
+        </div>
+        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={run} disabled={running} title="Re-run the queries">
+          {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Refresh"}
+        </Button>
+        <Button size="sm" className="h-7 px-2 text-xs" onClick={() => save(false)} disabled={saving}>
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : savedId ? "Update saved report" : "Save to my reports"}
+        </Button>
+        {savedId && (
+          <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => save(true)} disabled={saving} title="Keep the original and save this as a separate report">
+            Save as new
+          </Button>
+        )}
+        {savedId && (
+          <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => router.push(`/?saved=${savedId}`)}>
+            Open
+          </Button>
+        )}
+        <button onClick={() => setOpen((o) => !o)} className="text-muted-foreground hover:text-foreground" title={open ? "Collapse preview" : "Expand preview"}>
+          {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
+      </div>
+      {open && (
+        <div className="p-2">
+          {context.client ? <HtmlReportFrame html={report.html} data={data} title={report.title} /> : <p className="text-xs text-muted-foreground p-2">Preview unavailable in this context.</p>}
+        </div>
+      )}
     </div>
   )
 }
