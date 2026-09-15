@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Download, Eye, Play, Users, Zap } from "lucide-react"
 import { useReportParams } from "@/components/report-labs/report-context"
 import { KpiTile, ReportCard, DataTable, ShareBar, LoadingBlock } from "@/components/report-labs/ui"
-import { TrendChart } from "@/components/report-labs/charts"
+import { TrendChart, RankedBars } from "@/components/report-labs/charts"
 import { RecordCell } from "@/components/report-labs/record-cell"
 import {
   queryAnalytics,
@@ -44,6 +44,8 @@ export function ExecutiveOverview() {
   const [trend, setTrend] = useState<Array<Record<string, number | string>>>([])
   const [top, setTop] = useState<TopRow[]>([])
   const [cards, setCards] = useState<Map<string, RecordCard>>(new Map())
+  const [spaces, setSpaces] = useState<Array<{ label: string; value: number }> | null>(null)
+  const [contexts, setContexts] = useState<Array<{ label: string; value: number }> | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -106,6 +108,24 @@ export function ExecutiveOverview() {
         for (const r of tp) put(extractDate(r, "PreviewPlaybacks.previewPlaybackDate"), "plays", num(r["PreviewPlaybacks.count"]))
         const keys = bucketKeys(range, granularity, Array.from(byDate.keys()))
         setTrend(keys.map((k) => byDate.get(k) ?? { date: k, views: 0, downloads: 0, impressions: 0, plays: 0 }))
+
+        // Views by brand portal space and by context (optional joins; hidden if unsupported)
+        q({ measures: ["Views.count"], dimensions: ["Spaces.name"], filters: colFilter("Views.collectionId"), timeDimensions: time("DateDimension.date", range), order: { "Views.count": "desc" }, limit: 12 })
+          .then((rows) => !cancelled && setSpaces(rows.map((r) => ({ label: str(r["Spaces.name"]) || "(no space)", value: num(r["Views.count"]) })).filter((r) => r.value > 0)))
+          .catch(() => !cancelled && setSpaces(null))
+        q({ measures: ["Views.count"], dimensions: ["Views.hasSpaceContext", "Views.hasCollectionContext", "Views.hasNoContext"], filters: colFilter("Views.collectionId"), timeDimensions: time("DateDimension.date", range), limit: 50 })
+          .then((rows) => {
+            if (cancelled) return
+            const acc: Record<string, number> = { "Brand portal space": 0, "Collection": 0, "Direct": 0 }
+            for (const r of rows) {
+              const v = num(r["Views.count"])
+              if (str(r["Views.hasSpaceContext"]).toLowerCase() === "true") acc["Brand portal space"] += v
+              else if (str(r["Views.hasCollectionContext"]).toLowerCase() === "true") acc["Collection"] += v
+              else acc["Direct"] += v
+            }
+            setContexts(Object.entries(acc).map(([label, value]) => ({ label, value })))
+          })
+          .catch(() => !cancelled && setContexts(null))
 
         // Top assets (views + downloads)
         const [topVr, topDr] = await Promise.all([
@@ -190,6 +210,20 @@ export function ExecutiveOverview() {
         )}
       </ReportCard>
 
+      {(spaces?.length || contexts) && (
+        <div className="grid gap-4 xl:grid-cols-2">
+          {spaces && spaces.length > 0 && (
+            <ReportCard title="Views by brand portal space" subtitle="Where portal visitors are looking">
+              <RankedBars data={spaces} colorVar="--rl-1" labelWidth={150} />
+            </ReportCard>
+          )}
+          {contexts && (
+            <ReportCard title="Where views happen" subtitle="Brand portal space, inside a collection, or direct in the DAM">
+              <RankedBars data={contexts} colorVar="--rl-1" labelWidth={150} />
+            </ReportCard>
+          )}
+        </div>
+      )}
       <ReportCard title="Top assets" subtitle="Ranked by views plus downloads in the period" loading={loading}>
         <DataTable<TopRow>
           rows={top}

@@ -26,6 +26,7 @@ import { UserAdoption } from "@/components/reports/user-adoption"
 import { PublicLinkTraffic } from "@/components/reports/public-link-traffic"
 import { FormatDemand } from "@/components/reports/format-demand"
 import { VideoPerformance } from "@/components/reports/video-performance"
+import { ClassificationEngagement } from "@/components/reports/classification-engagement"
 import { LibraryComposition } from "@/components/reports/library-composition"
 import { LibraryGrowth } from "@/components/reports/library-growth"
 import { ContentFreshness } from "@/components/reports/content-freshness"
@@ -40,6 +41,7 @@ const COMPONENTS: Record<string, React.ComponentType> = {
   "user-adoption": UserAdoption,
   "public-link-traffic": PublicLinkTraffic,
   "format-demand": FormatDemand,
+  "classification-engagement": ClassificationEngagement,
   "video-performance": VideoPerformance,
   "library-composition": LibraryComposition,
   "library-growth": LibraryGrowth,

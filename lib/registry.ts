@@ -39,9 +39,9 @@ export const REPORTS: ReportDef[] = [
     id: "zero-engagement",
     title: "Zero Engagement",
     group: "Engagement",
-    description: "How much of the library saw no views or downloads in the period, and which recent assets are going unused.",
+    description: "Records never viewed or never downloaded, by content type and by year created, with the oldest unused assets.",
     sources: ["Analytics", "Core"],
-    usesDateRange: true,
+    usesDateRange: false,
   },
   {
     id: "user-adoption",
@@ -65,6 +65,14 @@ export const REPORTS: ReportDef[] = [
     group: "Engagement",
     description: "Which renditions, crops, and versions people actually download. Useful for deciding what to pre-generate.",
     sources: ["Analytics"],
+    usesDateRange: true,
+  },
+  {
+    id: "classification-engagement",
+    title: "Classification Engagement",
+    group: "Engagement",
+    description: "Views or downloads by classification, with drill-down to the top assets inside any classification.",
+    sources: ["Analytics", "Core"],
     usesDateRange: true,
   },
   {

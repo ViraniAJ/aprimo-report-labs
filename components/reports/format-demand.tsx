@@ -52,14 +52,15 @@ export function FormatDemand() {
         setAvailableDims(dims)
         setMetaSource(dims.length > 2 ? "live" : "fallback")
 
-        // Pick dimensions by pattern; fall back to common names when meta is unavailable.
-        const picks: Array<{ label: string; dimension: string }> = []
+        // Verified member names first; then anything else the schema exposes that looks format-related.
+        const picks: Array<{ label: string; dimension: string }> = [
+          { label: "Rendition type", dimension: "Downloads.renditionType" },
+          { label: "Crop", dimension: "Downloads.cropType" },
+          { label: "File version", dimension: "Downloads.versionNumber" },
+        ]
         for (const c of CANDIDATES) {
           const found = dims.find((d) => c.pattern.test(d.split(".").pop() ?? d))
           if (found && !picks.some((x) => x.dimension === found)) picks.push({ label: c.label, dimension: found })
-        }
-        if (picks.length === 0) {
-          picks.push({ label: "Rendition type", dimension: "Downloads.renditionType" }, { label: "Crop", dimension: "Downloads.cropType" })
         }
 
         const results = await Promise.all(
@@ -96,7 +97,7 @@ export function FormatDemand() {
       <p className="text-sm text-muted-foreground">
         {loading ? "Reading the Downloads schema…" : `${formatInt(total)} downloads in the period. `}
         {!loading && metaSource === "live" && `The analytics schema exposes ${availableDims.length} download dimensions; the format-related ones are charted below.`}
-        {!loading && metaSource === "fallback" && "The analytics schema endpoint is not available here, so common member names were tried directly."}
+        {!loading && metaSource === "fallback" && "Rendition, crop, and version breakdowns come from the documented Downloads members."}
       </p>
       {error && <ReportCard title="Format demand" error={error} />}
       {loading ? (

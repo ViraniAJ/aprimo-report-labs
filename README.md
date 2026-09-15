@@ -10,7 +10,7 @@ Live reporting and a natural-language assistant that extend Aprimo DAM. A standa
 
 | Group | Reports |
 |-------|---------|
-| Engagement | Executive Overview · Asset Performance · Zero Engagement · User Adoption · Public Link Traffic · Format Demand · Video Performance |
+| Engagement | Executive Overview · Asset Performance · Zero Engagement · User Adoption · Public Link Traffic · Format Demand · Classification Engagement · Video Performance |
 | Library | Library Composition · Library Growth · Content Freshness · Duplicate Assets |
 | Reference | Analytics Data Model |
 

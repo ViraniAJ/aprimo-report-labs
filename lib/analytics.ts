@@ -2,7 +2,7 @@
 // Used by every Report Labs report and by the assistant's server tools.
 
 export type DateRangeKey = "7d" | "30d" | "90d" | "6m" | "1y" | "all"
-export type Granularity = "day" | "week" | "month"
+export type Granularity = "day" | "week" | "month" | "quarter" | "year"
 
 export const DATE_RANGE_OPTIONS: { key: DateRangeKey; label: string }[] = [
   { key: "7d", label: "7 days" },
@@ -275,6 +275,8 @@ export function extractDate(row: AnalyticsRow, dim: string): string {
     str(row[`${dim}.day`]).slice(0, 10) ||
     str(row[`${dim}.week`]).slice(0, 10) ||
     str(row[`${dim}.month`]).slice(0, 10) ||
+    str(row[`${dim}.quarter`]).slice(0, 10) ||
+    str(row[`${dim}.year`]).slice(0, 10) ||
     str(row[dim]).slice(0, 10)
   )
 }
@@ -330,6 +332,8 @@ export function bucketKeys(range: DateRange | undefined, granularity: Granularit
     set.add(iso(cur))
     if (granularity === "day") cur.setDate(cur.getDate() + 1)
     else if (granularity === "week") cur.setDate(cur.getDate() + 7)
+    else if (granularity === "quarter") cur.setMonth(cur.getMonth() + 3)
+    else if (granularity === "year") cur.setFullYear(cur.getFullYear() + 1)
     else cur.setMonth(cur.getMonth() + 1)
   }
   return Array.from(set).sort()
@@ -338,6 +342,8 @@ export function bucketKeys(range: DateRange | undefined, granularity: Granularit
 export function formatBucket(date: string, granularity: Granularity): string {
   if (!date) return ""
   const d = new Date(date + "T00:00:00Z")
+  if (granularity === "year") return String(d.getUTCFullYear())
+  if (granularity === "quarter") return `Q${Math.floor(d.getUTCMonth() / 3) + 1} ${String(d.getUTCFullYear()).slice(2)}`
   if (granularity === "month") return d.toLocaleDateString(undefined, { month: "short", year: "2-digit", timeZone: "UTC" })
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })
 }

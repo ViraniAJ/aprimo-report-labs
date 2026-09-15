@@ -83,9 +83,23 @@ export function UserAdoption() {
         setUsers(Array.from(byUser.values()).map((r) => ({ ...r, total: r.views + r.downloads })).sort((a, b) => b.total - a.total))
         setLoading(false)
 
-        // Optional breakdown by department / company if the schema exposes it
-        const meta = await getAnalyticsMeta(p.environment, p.authHeader)
-        const dim = findDimension(meta, "Users", /^(department|company|division|team)$/i)
+        // Breakdown by department (or company); verified member names first, schema discovery second
+        let dim: string | undefined
+        for (const candidate of ["Users.department", "Users.company"]) {
+          try {
+            const probe = await q({ measures: ["Views.count"], dimensions: [candidate], timeDimensions: time("DateDimension.date"), limit: 1 })
+            if (probe.some((r) => str(r[candidate]))) {
+              dim = candidate
+              break
+            }
+          } catch {
+            /* try next */
+          }
+        }
+        if (!dim) {
+          const meta = await getAnalyticsMeta(p.environment, p.authHeader)
+          dim = findDimension(meta, "Users", /^(department|company|division|team)$/i)
+        }
         if (dim) {
           try {
             const rows = await q({ measures: ["Views.count"], dimensions: [dim], timeDimensions: time("DateDimension.date"), order: { "Views.count": "desc" }, limit: 20 })

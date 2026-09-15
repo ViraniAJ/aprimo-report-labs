@@ -32,6 +32,7 @@ export function AssetPerformance() {
   const [rows, setRows] = useState<Row[]>([])
   const [total, setTotal] = useState(0)
   const [cards, setCards] = useState<Map<string, RecordCard>>(new Map())
+  const [byType, setByType] = useState<Array<{ label: string; value: number }> | null>(null)
 
   const m = METRICS[metric]
   const scoped = !!p.collectionId && !m.collectionDim
@@ -50,6 +51,9 @@ export function AssetPerformance() {
         }
         const filters = p.collectionId && m.collectionDim ? [{ member: m.collectionDim, operator: "equals", values: [toGuid(p.collectionId)] }] : []
         const timeDimensions = p.range ? [{ dimension: m.timeDim, dateRange: p.range }] : []
+        queryAnalytics(p.environment, p.authHeader, { measures: [m.measure], dimensions: ["Records.contentType"], filters, timeDimensions, order: { [m.measure]: "desc" }, limit: 15 })
+          .then((rows) => !cancelled && setByType(rows.map((r) => ({ label: str(r["Records.contentType"]) || "(none)", value: num(r[m.measure]) })).filter((r) => r.value > 0)))
+          .catch(() => !cancelled && setByType(null))
         const [totalRows, ranked] = await Promise.all([
           queryAnalytics(p.environment, p.authHeader, { measures: [m.measure], filters, timeDimensions }),
           queryRanked(p.environment, p.authHeader, { measures: [m.measure], dimensions: [m.recordDim], filters, timeDimensions, order: { [m.measure]: "desc" }, limit }),
@@ -113,9 +117,16 @@ export function AssetPerformance() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-5">
-        <ReportCard title={`Top 10 by ${m.label.toLowerCase()}`} className="xl:col-span-2" loading={loading} error={error}>
-          {loading ? <LoadingBlock height={300} /> : <RankedBars data={top10} colorVar={m.colorVar} labelWidth={150} />}
-        </ReportCard>
+        <div className="xl:col-span-2 flex flex-col gap-4">
+          <ReportCard title={`Top 10 by ${m.label.toLowerCase()}`} loading={loading} error={error}>
+            {loading ? <LoadingBlock height={300} /> : <RankedBars data={top10} colorVar={m.colorVar} labelWidth={150} />}
+          </ReportCard>
+          {byType && byType.length > 0 && (
+            <ReportCard title={`${m.label} by content type`}>
+              <RankedBars data={byType.slice(0, 10)} colorVar={m.colorVar} labelWidth={150} />
+            </ReportCard>
+          )}
+        </div>
         <ReportCard title={`Top ${limit} assets`} subtitle="Click an asset to open it in the DAM" className="xl:col-span-3" loading={loading} error={error}>
           <DataTable<Row>
             rows={rows}
