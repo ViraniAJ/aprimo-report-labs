@@ -2,7 +2,7 @@
 // Report Labs inventory reports and by the assistant's server tools.
 
 import { Expander, AprimoRateLimitError, AprimoNotFoundError, AprimoForbiddenError, AprimoUnauthorizedError, type createClient } from "aprimo-js"
-import { toGuid, analyticsId } from "./analytics"
+import { toGuid, analyticsId, str, TITLE_DIM, TYPE_DIM, type AnalyticsRow } from "./analytics"
 
 export type AprimoClient = ReturnType<typeof createClient>
 
@@ -205,4 +205,60 @@ export async function listCollections(client: AprimoClient): Promise<CollectionI
 /** Deep link into the DAM UI. The content item route takes the id without dashes. */
 export function damRecordUrl(environment: string, id: string): string {
   return `https://${environment}.dam.aprimo.com/dam/contentitems/${analyticsId(id)}`
+}
+
+
+/**
+ * Builds record cards straight from analytics rows that carry the title join.
+ * Keyed by the raw record id as it appears in the rows (plus the normalised
+ * form), so reports can look cards up either way. No API calls.
+ */
+export function cardsFromRows(rows: AnalyticsRow[], recordDim: string, environment: string): Map<string, RecordCard> {
+  const map = new Map<string, RecordCard>()
+  for (const r of rows) {
+    const raw = str(r[recordDim])
+    if (!raw) continue
+    const key = analyticsId(raw)
+    const title = str(r[TITLE_DIM]).trim()
+    const card: RecordCard = {
+      id: toGuid(key),
+      key,
+      title: title || `${key.slice(0, 8)}…`,
+      contentType: str(r[TYPE_DIM]) || undefined,
+      thumbnail: undefined,
+    }
+    map.set(raw, card)
+    map.set(key, card)
+  }
+  void environment
+  return map
+}
+
+/**
+ * Fetches thumbnails (and, where missing, titles) for the first `limit` ids and
+ * merges them into an existing card map. Runs after the table has rendered so
+ * titles from the analytics join show immediately.
+ */
+export async function hydrateThumbnails(client: AprimoClient, cards: Map<string, RecordCard>, ids: string[], limit = 25): Promise<Map<string, RecordCard>> {
+  const wanted = Array.from(new Set(ids.map(analyticsId))).slice(0, limit)
+  if (!wanted.length) return cards
+  const fetched = await fetchRecordCards(client, wanted)
+  const next = new Map(cards)
+  for (const [k, c] of fetched) {
+    const existing = next.get(k)
+    if (!existing) {
+      next.set(k, c)
+      continue
+    }
+    const merged: RecordCard = {
+      ...existing,
+      thumbnail: c.thumbnail ?? existing.thumbnail,
+      title: existing.title && !existing.title.endsWith("…") ? existing.title : c.title,
+      contentType: existing.contentType ?? c.contentType,
+      unavailable: existing.title.endsWith("…") ? c.unavailable : undefined,
+    }
+    // Update every alias pointing at this record.
+    for (const [alias, card] of next) if (card === existing) next.set(alias, merged)
+  }
+  return next
 }

@@ -8,6 +8,7 @@ import { TrendChart } from "@/components/report-labs/charts"
 import { RecordCell } from "@/components/report-labs/record-cell"
 import {
   queryAnalytics,
+  queryRanked,
   num,
   str,
   extractDate,
@@ -17,7 +18,7 @@ import {
   type AnalyticsQuery,
   type DateRange,
 } from "@/lib/analytics"
-import { fetchRecordCards, type RecordCard } from "@/lib/core"
+import { cardsFromRows, hydrateThumbnails, type RecordCard } from "@/lib/core"
 
 interface Totals {
   views: number
@@ -107,9 +108,14 @@ export function ExecutiveOverview() {
         setTrend(keys.map((k) => byDate.get(k) ?? { date: k, views: 0, downloads: 0, impressions: 0, plays: 0 }))
 
         // Top assets (views + downloads)
-        const [topV, topD] = await Promise.all([
-          q({ measures: ["Views.count"], dimensions: ["Views.recordId"], filters: colFilter("Views.collectionId"), timeDimensions: time("DateDimension.date", range), order: { "Views.count": "desc" }, limit: 15 }),
-          colGuid ? Promise.resolve([]) : q({ measures: ["Downloads.count"], dimensions: ["Downloads.recordId"], timeDimensions: time("Downloads.downloadDate", range), order: { "Downloads.count": "desc" }, limit: 15 }),
+        const [topVr, topDr] = await Promise.all([
+          queryRanked(env, authHeader, { measures: ["Views.count"], dimensions: ["Views.recordId"], filters: colFilter("Views.collectionId"), timeDimensions: time("DateDimension.date", range), order: { "Views.count": "desc" }, limit: 15 }),
+          colGuid ? Promise.resolve({ rows: [], joined: true }) : queryRanked(env, authHeader, { measures: ["Downloads.count"], dimensions: ["Downloads.recordId"], timeDimensions: time("Downloads.downloadDate", range), order: { "Downloads.count": "desc" }, limit: 15 }),
+        ])
+        const topV = topVr.rows, topD = topDr.rows
+        const joinedCards = new Map<string, RecordCard>([
+          ...(topVr.joined ? cardsFromRows(topV, "Views.recordId", env) : []),
+          ...(topDr.joined ? cardsFromRows(topD, "Downloads.recordId", env) : []),
         ])
         const agg = new Map<string, TopRow>()
         for (const r of topV) {
@@ -132,9 +138,10 @@ export function ExecutiveOverview() {
           .slice(0, 10)
         if (cancelled) return
         setTop(rows)
+        setCards(joinedCards)
         setLoading(false)
 
-        const map = await fetchRecordCards(p.client, rows.map((r) => r.recordId))
+        const map = await hydrateThumbnails(p.client, joinedCards, rows.map((r) => r.recordId), 10)
         if (!cancelled) setCards(map)
       } catch (e) {
         if (!cancelled) {

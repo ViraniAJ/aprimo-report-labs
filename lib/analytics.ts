@@ -208,9 +208,33 @@ export const KNOWN_CUBES: CubeMeta[] = [
   },
   {
     name: "RecordMetadata",
-    title: "Record metadata (joins to ContentEngagement)",
+    title: "Record metadata (joins to Views, Downloads, Impressions, PreviewPlaybacks, ContentEngagement)",
     measures: [],
-    dimensions: [{ name: "RecordMetadata.title" }],
+    dimensions: [{ name: "RecordMetadata.title" }, { name: "RecordMetadata.keywords" }, { name: "RecordMetadata.smartTags" }],
+  },
+  {
+    name: "Records",
+    title: "Record properties (joins to the engagement cubes)",
+    measures: [],
+    dimensions: [{ name: "Records.contentType" }, { name: "Records.createUser" }, { name: "Records.createDate", type: "time" }, { name: "Records.lastModifiedDate", type: "time" }, { name: "Records.fileCount" }],
+  },
+  {
+    name: "ZeroViewRecords",
+    title: "Records never viewed",
+    measures: [{ name: "ZeroViewRecords.count", type: "count" }],
+    dimensions: [{ name: "ZeroViewRecords.contentType" }, { name: "ZeroViewRecords.createUser" }, { name: "ZeroViewRecords.createDate", type: "time" }, { name: "ZeroViewRecords.lastModifiedDate", type: "time" }],
+  },
+  {
+    name: "ZeroDownloadRecords",
+    title: "Records never downloaded",
+    measures: [{ name: "ZeroDownloadRecords.count", type: "count" }],
+    dimensions: [{ name: "ZeroDownloadRecords.contentType" }, { name: "ZeroDownloadRecords.createUser" }, { name: "ZeroDownloadRecords.createDate", type: "time" }, { name: "ZeroDownloadRecords.lastModifiedDate", type: "time" }],
+  },
+  {
+    name: "Spaces",
+    title: "Brand portal spaces (joins to Views, PreviewPlaybacks)",
+    measures: [],
+    dimensions: [{ name: "Spaces.name" }, { name: "Spaces.spaceId" }],
   },
 ]
 
@@ -316,4 +340,36 @@ export function formatBucket(date: string, granularity: Granularity): string {
   const d = new Date(date + "T00:00:00Z")
   if (granularity === "month") return d.toLocaleDateString(undefined, { month: "short", year: "2-digit", timeZone: "UTC" })
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })
+}
+
+
+// ── Title join ───────────────────────────────────────────────────────────────
+// RecordMetadata.title and Records.contentType join onto the engagement cubes,
+// so rankings can carry titles without a Core API lookup per row. Not every
+// tenant or cube may support the join, so callers fall back to the bare query.
+
+export const TITLE_DIM = "RecordMetadata.title"
+export const TYPE_DIM = "Records.contentType"
+
+export interface RankedResult {
+  rows: AnalyticsRow[]
+  /** True when the title/content type join was accepted. */
+  joined: boolean
+  error?: string
+}
+
+/**
+ * Runs a ranking query with the title and content type dimensions added. If the
+ * joined query fails, retries without them and reports joined=false.
+ */
+export async function queryRanked(environment: string, authHeader: string, query: AnalyticsQuery): Promise<RankedResult> {
+  const dims = query.dimensions ?? []
+  const joinedQuery: AnalyticsQuery = { ...query, dimensions: Array.from(new Set([...dims, TITLE_DIM, TYPE_DIM])) }
+  try {
+    const rows = await queryAnalytics(environment, authHeader, joinedQuery)
+    return { rows, joined: true }
+  } catch (e) {
+    const rows = await queryAnalytics(environment, authHeader, query)
+    return { rows, joined: false, error: e instanceof Error ? e.message : String(e) }
+  }
 }

@@ -6,8 +6,8 @@ import { useReportParams } from "@/components/report-labs/report-context"
 import { KpiTile, ReportCard, DataTable, ShareBar, LoadingBlock } from "@/components/report-labs/ui"
 import { TrendChart } from "@/components/report-labs/charts"
 import { RecordCell } from "@/components/report-labs/record-cell"
-import { queryAnalytics, num, str, extractDate, bucketKeys, formatInt } from "@/lib/analytics"
-import { fetchRecordCards, type RecordCard } from "@/lib/core"
+import { queryAnalytics, queryRanked, num, str, extractDate, bucketKeys, formatInt } from "@/lib/analytics"
+import { cardsFromRows, hydrateThumbnails, type RecordCard } from "@/lib/core"
 
 interface AssetRow extends Record<string, unknown> {
   recordId: string
@@ -40,7 +40,7 @@ export function VideoPerformance() {
         const [t, tr, ar, ur] = await Promise.all([
           q({ measures: ["PreviewPlaybacks.count"], timeDimensions: time() }),
           q({ measures: ["PreviewPlaybacks.count"], timeDimensions: time(true), order: { [DIM]: "asc" }, limit: 1000 }),
-          q({ measures: ["PreviewPlaybacks.count"], dimensions: ["PreviewPlaybacks.recordId"], timeDimensions: time(), order: { "PreviewPlaybacks.count": "desc" }, limit: 25 }),
+          queryRanked(p.environment, p.authHeader, { measures: ["PreviewPlaybacks.count"], dimensions: ["PreviewPlaybacks.recordId"], timeDimensions: time(), order: { "PreviewPlaybacks.count": "desc" }, limit: 25 }),
           q({ measures: ["PreviewPlaybacks.count"], dimensions: ["Users.loginId"], timeDimensions: time(), order: { "PreviewPlaybacks.count": "desc" }, limit: 25 }).catch(() => []),
         ])
         if (cancelled) return
@@ -52,11 +52,13 @@ export function VideoPerformance() {
         }
         const keys = bucketKeys(p.range, p.granularity, Array.from(byDate.keys()))
         setTrend(keys.map((k) => ({ date: k, plays: byDate.get(k) ?? 0 })))
-        const a = ar.map((r) => ({ recordId: str(r["PreviewPlaybacks.recordId"]), plays: num(r["PreviewPlaybacks.count"]) })).filter((r) => r.recordId)
+        const a = ar.rows.map((r) => ({ recordId: str(r["PreviewPlaybacks.recordId"]), plays: num(r["PreviewPlaybacks.count"]) })).filter((r) => r.recordId)
         setAssets(a)
         setUsers(ur.map((r) => ({ user: str(r["Users.loginId"]), plays: num(r["PreviewPlaybacks.count"]) })).filter((r) => r.user))
+        const initial = ar.joined ? cardsFromRows(ar.rows, "PreviewPlaybacks.recordId", p.environment) : new Map<string, RecordCard>()
+        setCards(initial)
         setLoading(false)
-        const map = await fetchRecordCards(p.client, a.map((r) => r.recordId))
+        const map = await hydrateThumbnails(p.client, initial, a.map((r) => r.recordId), ar.joined ? 10 : 25)
         if (!cancelled) setCards(map)
       } catch (e) {
         if (!cancelled) {

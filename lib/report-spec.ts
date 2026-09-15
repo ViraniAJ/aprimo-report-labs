@@ -5,7 +5,7 @@
 // handed to the view (the app's components, or a sandboxed HTML page). The
 // view never touches Aprimo itself, so a report can be refreshed at any time.
 
-import { queryAnalytics, getDateRange, getPriorRange, getGranularity, str, type AnalyticsQuery, type DateRange, type DateRangeKey, type Granularity } from "@/lib/analytics"
+import { queryAnalytics, queryRanked, getDateRange, getPriorRange, getGranularity, str, TITLE_DIM, TYPE_DIM, type AnalyticsQuery, type DateRange, type DateRangeKey, type Granularity } from "@/lib/analytics"
 import { countRecords, searchRecordCards, fetchRecordCards, listContentTypes, runThrottled, escapeExpr, dateLiteral, type AprimoClient, type RecordCard } from "@/lib/core"
 
 export type { SpecQuery, ReportSpec, QueryResult } from "@/lib/report-spec-types"
@@ -64,22 +64,31 @@ export async function runSpec(spec: ReportSpec, ctx: RunContext): Promise<RunOut
       const started = Date.now()
       try {
         if (q.kind === "analytics") {
-          const rows = await queryAnalytics(ctx.environment, ctx.authHeader, substitute(q, range, prior, granularity))
-          if (q.resolveTitles && rows.length) {
+          const built = substitute(q, range, prior, granularity)
+          let rows
+          if (q.resolveTitles) {
+            // Titles from the analytics join when available; thumbnails for the top rows via the Core API.
+            const ranked = await queryRanked(ctx.environment, ctx.authHeader, built)
+            rows = ranked.rows
             const ids = rows.map((r) => str(r[q.resolveTitles!])).filter(Boolean)
-            const cards = await fetchRecordCards(ctx.client, ids)
+            const cards = await fetchRecordCards(ctx.client, ids.slice(0, ranked.joined ? 25 : ids.length))
             for (const r of rows) {
-              const c: RecordCard | undefined = cards.get(str(r[q.resolveTitles!]))
-              if (c && !c.unavailable) {
-                r._title = c.title
-                r._thumbnail = c.thumbnail ?? null
-                r._contentType = c.contentType ?? null
-                r._link = `https://${ctx.environment}.dam.aprimo.com/dam/contentitems/${c.key}`
+              const raw = str(r[q.resolveTitles!])
+              const c: RecordCard | undefined = cards.get(raw)
+              const joinedTitle = ranked.joined ? str(r[TITLE_DIM]).trim() : ""
+              const key = raw.replace(/-/g, "").toLowerCase()
+              if (joinedTitle || (c && !c.unavailable)) {
+                r._title = joinedTitle || c!.title
+                r._thumbnail = c?.thumbnail ?? null
+                r._contentType = (ranked.joined ? str(r[TYPE_DIM]) : "") || c?.contentType || null
+                r._link = `https://${ctx.environment}.dam.aprimo.com/dam/contentitems/${key}`
               } else {
                 r._title = null
-                r._unavailable = c?.unavailable ?? "error"
+                r._unavailable = c?.unavailable ?? (c ? "error" : "not-fetched")
               }
             }
+          } else {
+            rows = await queryAnalytics(ctx.environment, ctx.authHeader, built)
           }
           results[q.id] = { id: q.id, kind: q.kind, rows, ms: Date.now() - started }
         } else if (q.kind === "search-count") {

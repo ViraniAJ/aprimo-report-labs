@@ -6,8 +6,8 @@ import { useReportParams } from "@/components/report-labs/report-context"
 import { KpiTile, ReportCard, DataTable, ShareBar, LoadingBlock } from "@/components/report-labs/ui"
 import { TrendChart, RankedBars } from "@/components/report-labs/charts"
 import { RecordCell } from "@/components/report-labs/record-cell"
-import { queryAnalytics, num, str, extractDate, bucketKeys, formatBytes, formatInt } from "@/lib/analytics"
-import { fetchRecordCards, type RecordCard } from "@/lib/core"
+import { queryAnalytics, queryRanked, num, str, extractDate, bucketKeys, formatBytes, formatInt } from "@/lib/analytics"
+import { cardsFromRows, hydrateThumbnails, type RecordCard } from "@/lib/core"
 
 interface FileRow extends Record<string, unknown> {
   recordId: string
@@ -57,15 +57,16 @@ export function PublicLinkTraffic() {
 
         const [tr, fr, ur] = await Promise.all([
           q({ measures: ["Impressions.count"], timeDimensions: time(true), order: { "Impressions.hitDateTime": "asc" }, limit: 1000 }),
-          q({
+          queryRanked(p.environment, p.authHeader, {
             measures: withBytes ? ["Impressions.count", "Impressions.totalResponseSize"] : ["Impressions.count"],
             dimensions: ["Impressions.recordId", "Impressions.fileName"],
             timeDimensions: time(),
             order: { "Impressions.count": "desc" },
             limit: 50,
-          }).catch(() =>
-            q({ measures: ["Impressions.count"], dimensions: ["Impressions.recordId"], timeDimensions: time(), order: { "Impressions.count": "desc" }, limit: 50 }),
-          ),
+          }).catch(async () => ({
+            rows: await q({ measures: ["Impressions.count"], dimensions: ["Impressions.recordId"], timeDimensions: time(), order: { "Impressions.count": "desc" }, limit: 50 }),
+            joined: false,
+          })),
           q({
             measures: ["Impressions.count"],
             dimensions: ["ImpressionTrackingTypes.queryStringKey", "ImpressionTrackingTypeValues.value"],
@@ -84,7 +85,7 @@ export function PublicLinkTraffic() {
         const keys = bucketKeys(p.range, p.granularity, Array.from(byDate.keys()))
         setTrend(keys.map((k) => ({ date: k, impressions: byDate.get(k) ?? 0 })))
 
-        const fileRows: FileRow[] = fr
+        const fileRows: FileRow[] = fr.rows
           .map((r) => ({
             recordId: str(r["Impressions.recordId"]),
             fileName: str(r["Impressions.fileName"]),
@@ -99,9 +100,11 @@ export function PublicLinkTraffic() {
             .map((r) => ({ key: str(r["ImpressionTrackingTypes.queryStringKey"]), value: str(r["ImpressionTrackingTypeValues.value"]), impressions: num(r["Impressions.count"]) }))
             .filter((r) => r.key || r.value),
         )
+        const initial = fr.joined ? cardsFromRows(fr.rows, "Impressions.recordId", p.environment) : new Map<string, RecordCard>()
+        setCards(initial)
         setLoading(false)
 
-        const map = await fetchRecordCards(p.client, fileRows.slice(0, 50).map((r) => r.recordId))
+        const map = await hydrateThumbnails(p.client, initial, fileRows.map((r) => r.recordId), fr.joined ? 15 : 50)
         if (!cancelled) setCards(map)
       } catch (e) {
         if (!cancelled) {

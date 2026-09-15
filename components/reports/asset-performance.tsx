@@ -5,8 +5,8 @@ import { useReportParams } from "@/components/report-labs/report-context"
 import { ReportCard, DataTable, ShareBar, LoadingBlock } from "@/components/report-labs/ui"
 import { RankedBars } from "@/components/report-labs/charts"
 import { RecordCell } from "@/components/report-labs/record-cell"
-import { queryAnalytics, num, str, toGuid, formatInt } from "@/lib/analytics"
-import { fetchRecordCards, type RecordCard } from "@/lib/core"
+import { queryAnalytics, queryRanked, num, str, toGuid, formatInt } from "@/lib/analytics"
+import { cardsFromRows, hydrateThumbnails, type RecordCard } from "@/lib/core"
 
 type Metric = "views" | "downloads" | "impressions" | "plays"
 
@@ -50,20 +50,23 @@ export function AssetPerformance() {
         }
         const filters = p.collectionId && m.collectionDim ? [{ member: m.collectionDim, operator: "equals", values: [toGuid(p.collectionId)] }] : []
         const timeDimensions = p.range ? [{ dimension: m.timeDim, dateRange: p.range }] : []
-        const [totalRows, topRows] = await Promise.all([
+        const [totalRows, ranked] = await Promise.all([
           queryAnalytics(p.environment, p.authHeader, { measures: [m.measure], filters, timeDimensions }),
-          queryAnalytics(p.environment, p.authHeader, { measures: [m.measure], dimensions: [m.recordDim], filters, timeDimensions, order: { [m.measure]: "desc" }, limit }),
+          queryRanked(p.environment, p.authHeader, { measures: [m.measure], dimensions: [m.recordDim], filters, timeDimensions, order: { [m.measure]: "desc" }, limit }),
         ])
         if (cancelled) return
         const t = num(totalRows[0]?.[m.measure])
         setTotal(t)
-        const out: Row[] = topRows
+        const out: Row[] = ranked.rows
           .map((r) => ({ recordId: str(r[m.recordDim]), count: num(r[m.measure]), share: 0 }))
           .filter((r) => r.recordId)
           .map((r) => ({ ...r, share: t > 0 ? (r.count / t) * 100 : 0 }))
         setRows(out)
+        // Titles arrive with the analytics rows when the join is supported; thumbnails follow in the background.
+        const initial = ranked.joined ? cardsFromRows(ranked.rows, m.recordDim, p.environment) : new Map<string, RecordCard>()
+        setCards(initial)
         setLoading(false)
-        const map = await fetchRecordCards(p.client, out.map((r) => r.recordId))
+        const map = await hydrateThumbnails(p.client, initial, out.map((r) => r.recordId), ranked.joined ? 25 : limit)
         if (!cancelled) setCards(map)
       } catch (e) {
         if (!cancelled) {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useReportParams } from "@/components/report-labs/report-context"
 import { ReportCard, LoadingBlock } from "@/components/report-labs/ui"
-import { queryAnalytics, str, toGuid, analyticsId } from "@/lib/analytics"
+import { queryAnalytics, str, toGuid, analyticsId, TITLE_DIM, TYPE_DIM } from "@/lib/analytics"
 import { cardExpander } from "@/lib/core"
 import { Button } from "@/components/ui/button"
 import { MCP_CONFIGURED, readMcpTokens, getMcpToken, startMcpConsent, clearMcpTokens } from "@/lib/mcp-auth"
@@ -157,6 +157,7 @@ export function Diagnostics() {
 
   return (
     <div className="flex flex-col gap-4">
+      <TitleJoinCheck />
       <McpBridgeCheck />
       <ReportCard title="What the APIs return" subtitle="Three top-viewed records via analytics id lookup, and three recent records with files via search">
         {loading ? (
@@ -272,6 +273,65 @@ function McpBridgeCheck() {
           </>
         )}
       </div>
+    </ReportCard>
+  )
+}
+
+
+// ── Title join: does RecordMetadata.title / Records.contentType join onto each cube? ──
+
+const JOIN_CUBES: Array<{ cube: string; measure: string; recordDim: string; timeDim: string }> = [
+  { cube: "Views", measure: "Views.count", recordDim: "Views.recordId", timeDim: "DateDimension.date" },
+  { cube: "Downloads", measure: "Downloads.count", recordDim: "Downloads.recordId", timeDim: "Downloads.downloadDate" },
+  { cube: "Impressions", measure: "Impressions.count", recordDim: "Impressions.recordId", timeDim: "Impressions.hitDateTime" },
+  { cube: "PreviewPlaybacks", measure: "PreviewPlaybacks.count", recordDim: "PreviewPlaybacks.recordId", timeDim: "PreviewPlaybacks.previewPlaybackDate" },
+]
+
+function TitleJoinCheck() {
+  const p = useReportParams()
+  const [rows, setRows] = useState<Array<{ cube: string; status: string; sample: string; ms: number }> | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const end = new Date().toISOString().slice(0, 10)
+    const start = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10)
+    Promise.all(
+      JOIN_CUBES.map(async (c) => {
+        const started = Date.now()
+        try {
+          const r = await queryAnalytics(p.environment, p.authHeader, {
+            measures: [c.measure],
+            dimensions: [c.recordDim, TITLE_DIM, TYPE_DIM],
+            timeDimensions: [{ dimension: c.timeDim, dateRange: [start, end] }],
+            order: { [c.measure]: "desc" },
+            limit: 3,
+          })
+          const withTitle = r.filter((x) => str(x[TITLE_DIM]).trim()).length
+          const sample = r.slice(0, 2).map((x) => `${str(x[TITLE_DIM]) || "(no title)"} · ${str(x[TYPE_DIM]) || "(no type)"}`).join(" | ")
+          return { cube: c.cube, status: r.length ? `join OK · ${withTitle}/${r.length} rows have a title` : "join accepted, no rows in last 365 days", sample, ms: Date.now() - started }
+        } catch (e) {
+          return { cube: c.cube, status: `join REJECTED: ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`, sample: "", ms: Date.now() - started }
+        }
+      }),
+    ).then((r) => !cancelled && setRows(r))
+    return () => {
+      cancelled = true
+    }
+  }, [p.environment, p.authHeader, p.refreshToken])
+
+  return (
+    <ReportCard title="Title join" subtitle="Whether RecordMetadata.title and Records.contentType can be joined onto each engagement cube. When they can, rankings need no per-record lookups.">
+      {!rows ? (
+        <LoadingBlock height={80} />
+      ) : (
+        <div className="text-xs font-mono break-all flex flex-col gap-1">
+          {rows.map((r) => (
+            <div key={r.cube}>
+              <span className="font-semibold">{r.cube}</span>: <span className={r.status.startsWith("join REJECTED") ? "text-destructive" : ""}>{r.status}</span> <span className="text-muted-foreground">({r.ms} ms)</span>
+              {r.sample && <div className="text-muted-foreground pl-4">{r.sample}</div>}
+            </div>
+          ))}
+        </div>
+      )}
     </ReportCard>
   )
 }
