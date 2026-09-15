@@ -162,8 +162,8 @@ function Workspace() {
   }
 
   return (
-    <div className="flex-1 flex min-h-0">
-      <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-border bg-card">
+    <div className="flex-1 flex min-h-0 overflow-hidden">
+      <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-border bg-card min-h-0">
         <nav className="flex-1 overflow-y-auto py-3">
           <button
             onClick={() => navigate(null)}
@@ -224,8 +224,8 @@ function Workspace() {
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 flex flex-col">
-        <div className="border-b border-border bg-background px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
+      <main className="flex-1 min-w-0 min-h-0 flex flex-col">
+        <div className="border-b border-border bg-background px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3 shrink-0">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <button onClick={() => navigate(null)} className="hover:text-foreground">Reports</button>
@@ -299,7 +299,7 @@ function Workspace() {
             </ReportProvider>
           </div>
           {assistantOpen && (
-            <div className="w-full sm:w-[420px] xl:w-[460px] shrink-0 h-[calc(100vh-3.5rem)] sticky top-14">
+            <div className="w-full sm:w-[420px] xl:w-[460px] shrink-0 h-full min-h-0">
               <AssistantPanel
                 context={{
                   environment: params.environment,
@@ -391,7 +391,7 @@ function ReportTile({ report, onOpen }: { report: ReportDef; onOpen: (id: string
 function Landing() {
   const connect = () => window.dispatchEvent(new Event("aprimo:open-config"))
   return (
-    <main className="flex-1">
+    <main className="flex-1 min-h-0 overflow-y-auto">
       <section className="px-6 pt-14 pb-10 max-w-5xl mx-auto">
         <div className="flex items-start gap-5">
           <LabsMark className="h-12 w-12 shrink-0 mt-1" />
@@ -446,7 +446,7 @@ function Feature({ icon, title, body }: { icon: React.ReactNode; title: string; 
 
 export default function Page() {
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       <TopBar />
       <Suspense
         fallback={
