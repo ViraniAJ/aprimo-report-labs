@@ -7,7 +7,7 @@ import { KpiTile, ReportCard, DataTable, LoadingBlock } from "@/components/repor
 import { RankedBars, ColumnChart } from "@/components/report-labs/charts"
 import { RecordCell } from "@/components/report-labs/record-cell"
 import { queryAnalytics, num, str, analyticsId, extractDate, formatBucket, formatInt, TITLE_DIM } from "@/lib/analytics"
-import { countRecords, searchRecordCards, ALL_RECORDS_EXPRESSION, dateLiteral, type RecordCard } from "@/lib/core"
+import { countRecords, searchRecordCards, resolveUserNames, ALL_RECORDS_EXPRESSION, dateLiteral, type RecordCard } from "@/lib/core"
 
 // Zero engagement, exact: the Analytics API keeps ZeroViewRecords and
 // ZeroDownloadRecords cubes of records that have never been viewed or
@@ -30,6 +30,7 @@ interface OldRow extends Record<string, unknown> {
   title: string
   contentType: string
   createUser: string
+  createUserId: string
   createDate: string
   ageDays: number
 }
@@ -75,25 +76,40 @@ export function ZeroEngagement() {
         const [types, years, old] = await Promise.all([
           q({ measures: [measure], dimensions: [`${c.cube}.contentType`], order: { [measure]: "desc" }, limit: 25 }),
           q({ measures: [measure], timeDimensions: [{ dimension: `${c.cube}.createDate`, granularity: "year" }], order: { [`${c.cube}.createDate`]: "asc" }, limit: 50 }).catch(() => []),
-          q({ measures: [measure], dimensions: [TITLE_DIM, `${c.cube}.contentType`, `${c.cube}.createUser`, `${c.cube}.createDate`], order: { [`${c.cube}.createDate`]: "asc" }, limit: 50 }).catch(() => []),
+          // Prefer the user name joined in; fall back to the bare createUser id.
+          q({ measures: [measure], dimensions: [TITLE_DIM, `${c.cube}.contentType`, `${c.cube}.createUser`, `${c.cube}.createDate`, "Users.firstName", "Users.lastName", "Users.loginId"], order: { [`${c.cube}.createDate`]: "asc" }, limit: 50 })
+            .then((rows) => (rows.some((r) => str(r["Users.loginId"]) || str(r["Users.lastName"])) ? rows : Promise.reject(new Error("no user join"))))
+            .catch(() => q({ measures: [measure], dimensions: [TITLE_DIM, `${c.cube}.contentType`, `${c.cube}.createUser`, `${c.cube}.createDate`], order: { [`${c.cube}.createDate`]: "asc" }, limit: 50 }).catch(() => [])),
         ])
         if (cancelled) return
         const zeroTotal = mode === "views" ? zv! : zd!
         setByType(types.map((r) => ({ contentType: str(r[`${c.cube}.contentType`]) || "(none)", count: num(r[measure]), share: zeroTotal ? (num(r[measure]) / zeroTotal) * 100 : 0 })))
         setByYear(years.map((r) => ({ label: formatBucket(extractDate(r, `${c.cube}.createDate`), "year"), value: num(r[measure]) })).filter((r) => r.label))
         const now = Date.now()
-        setOldest(
-          old.map((r) => {
-            const created = str(r[`${c.cube}.createDate`]).slice(0, 10)
-            return {
-              title: str(r[TITLE_DIM]) || "(untitled)",
-              contentType: str(r[`${c.cube}.contentType`]),
-              createUser: str(r[`${c.cube}.createUser`]),
-              createDate: created,
-              ageDays: created ? Math.floor((now - new Date(created).getTime()) / 86400000) : 0,
-            }
-          }),
-        )
+        const nameFromJoin = (r: Record<string, unknown>) => {
+          const full = [str(r["Users.firstName"]), str(r["Users.lastName"])].filter(Boolean).join(" ").trim()
+          const login = str(r["Users.loginId"])
+          return full ? `${full}${login ? ` (${login})` : ""}` : login
+        }
+        const rows: OldRow[] = old.map((r) => {
+          const created = str(r[`${c.cube}.createDate`]).slice(0, 10)
+          return {
+            title: str(r[TITLE_DIM]) || "(untitled)",
+            contentType: str(r[`${c.cube}.contentType`]),
+            createUser: nameFromJoin(r as Record<string, unknown>) || str(r[`${c.cube}.createUser`]),
+            createUserId: str(r[`${c.cube}.createUser`]),
+            createDate: created,
+            ageDays: created ? Math.floor((now - new Date(created).getTime()) / 86400000) : 0,
+          }
+        })
+        setOldest(rows)
+        // Any creator still shown as a GUID gets resolved through the Core API.
+        const unresolved = rows.filter((r) => /^[0-9a-f-]{32,36}$/i.test(r.createUser)).map((r) => r.createUserId)
+        if (unresolved.length) {
+          const names = await resolveUserNames(p.client, unresolved)
+          if (cancelled) return
+          setOldest(rows.map((r) => ({ ...r, createUser: names.get(r.createUserId.toLowerCase()) ?? r.createUser })))
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e))
       } finally {
@@ -150,7 +166,7 @@ export function ZeroEngagement() {
           columns={[
             { key: "title", header: "Asset" },
             { key: "contentType", header: "Type" },
-            { key: "createUser", header: "Created by", render: (r) => <span className="font-mono text-xs">{r.createUser}</span> },
+            { key: "createUser", header: "Created by", render: (r) => (/^[0-9a-f-]{32,36}$/i.test(r.createUser) ? <span className="font-mono text-xs text-muted-foreground" title={r.createUser}>{r.createUser.slice(0, 8)}…</span> : <span title={r.createUserId}>{r.createUser}</span>) },
             { key: "createDate", header: "Created", align: "right" },
             { key: "ageDays", header: "Age (days)", align: "right", render: (r) => formatInt(r.ageDays) },
           ]}

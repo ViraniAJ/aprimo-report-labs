@@ -262,3 +262,37 @@ export async function hydrateThumbnails(client: AprimoClient, cards: Map<string,
   }
   return next
 }
+
+
+// ── User names ───────────────────────────────────────────────────────────────
+// Some analytics cubes expose user GUIDs (e.g. ZeroViewRecords.createUser).
+// Resolve them to display names through the Core API, cached per session.
+
+const userNameCache = new Map<string, string>()
+
+export async function resolveUserNames(client: AprimoClient, ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  const wanted = Array.from(new Set(ids.map((i) => i.trim().toLowerCase()).filter(Boolean)))
+  const missing = wanted.filter((id) => !userNameCache.has(id))
+  await runThrottled(
+    missing.map((id) => async () => {
+      try {
+        const res = await client.users.getById(id)
+        if (res.ok) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const u = res.data as any
+          const full = [u.firstName, u.lastName].filter(Boolean).join(" ").trim()
+          userNameCache.set(id, full ? `${full}${u.name ? ` (${u.name})` : ""}` : u.name || u.email || id)
+        } else userNameCache.set(id, "")
+      } catch {
+        userNameCache.set(id, "")
+      }
+    }),
+    4,
+  )
+  for (const id of wanted) {
+    const v = userNameCache.get(id)
+    if (v) out.set(id, v)
+  }
+  return out
+}
