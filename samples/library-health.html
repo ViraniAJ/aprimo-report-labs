@@ -1,0 +1,175 @@
+<style>
+  .lh { padding: 18px 20px 24px; display: flex; flex-direction: column; gap: 16px; font-size: 13px; }
+  .lh * { box-sizing: border-box; }
+  .lh h2 { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+  .lh .muted { color: var(--muted-foreground); }
+  .lh .mono { font-family: var(--font-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; }
+  .lh .row { display: grid; gap: 12px; }
+  .lh .kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .lh .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+  .lh .kpi .l { font-size: 11px; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: .08em; }
+  .lh .kpi .v { font-size: 26px; font-weight: 600; line-height: 1.1; }
+  .lh .kpi .d { font-size: 11px; color: var(--muted-foreground); }
+  .lh .kpi.warn .v { color: var(--rl-2); }
+  .lh .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+  .lh .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 18px; align-items: end; }
+  .lh label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: .06em; }
+  .lh label b { color: var(--foreground); font-weight: 500; text-transform: none; letter-spacing: 0; font-size: 12px; }
+  .lh input[type=range] { width: 100%; accent-color: var(--rl-4); }
+  .lh input[type=text] { height: 30px; border: 1px solid var(--border); background: var(--background); color: var(--foreground); border-radius: 6px; padding: 0 8px; font: inherit; font-size: 13px; }
+  .lh .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lh .seg button { border: 0; background: transparent; color: var(--muted-foreground); padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  .lh .seg button.on { background: var(--primary); color: var(--primary-foreground); }
+  .lh .two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  @media (max-width: 860px) { .lh .two { grid-template-columns: 1fr; } }
+  .lh svg text { fill: var(--muted-foreground); font-size: 11px; }
+  .lh .stack { display: flex; height: 18px; border-radius: 6px; overflow: hidden; background: var(--muted); margin: 8px 0 6px; }
+  .lh .stack i { display: block; height: 100%; }
+  .lh .legend { display: flex; gap: 12px 16px; flex-wrap: wrap; font-size: 11px; color: var(--muted-foreground); }
+  .lh .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  .lh table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .lh th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .lh td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .lh td.n { text-align: right; }
+  .lh .thumb { width: 36px; height: 36px; border-radius: 4px; background: var(--muted); object-fit: cover; display: inline-block; vertical-align: middle; margin-right: 8px; }
+  .lh .thumb.ph { display: inline-flex; align-items: center; justify-content: center; color: var(--muted-foreground); font-size: 10px; }
+  .lh .hbar { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  .lh .hbar .lab { width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  .lh .hbar .track { flex: 1; background: var(--muted); border-radius: 4px; height: 10px; }
+  .lh .hbar .fill { display: block; height: 10px; border-radius: 4px; background: var(--rl-5); }
+  .lh .hbar .val { width: 70px; text-align: right; font-size: 12px; }
+  .lh a { color: inherit; text-decoration: none; } .lh a:hover { text-decoration: underline; }
+  .lh .foot { font-size: 11px; color: var(--muted-foreground); display: flex; gap: 12px; flex-wrap: wrap; }
+  .lh .empty { color: var(--muted-foreground); padding: 20px 0; text-align: center; }
+  .lh .note { font-size: 11.5px; color: var(--muted-foreground); margin-top: 6px; }
+</style>
+
+<div class="lh">
+  <div class="row kpis" id="kpis"></div>
+
+  <div class="card">
+    <h2>Adjust</h2>
+    <div class="controls">
+      <label>Stale after <b id="staleLabel">12 months</b><input type="range" id="stale" min="0" max="5" step="1" value="3"></label>
+      <label>Content types with at least <b id="minLabel">1</b> record<input type="range" id="minCount" min="0" max="100" step="1" value="1"></label>
+      <label>Filter content types<input type="text" id="filter" placeholder="e.g. image, video"></label>
+      <label>Show as
+        <span class="seg" id="modeSeg"><button data-m="count" class="on">Count</button><button data-m="share">Share</button></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="row two">
+    <div class="card">
+      <h2>Time since last modification</h2>
+      <div class="stack" id="stack"></div>
+      <div class="legend" id="stackLegend"></div>
+      <div id="ageBars" style="margin-top:12px"></div>
+      <div class="note" id="staleNote"></div>
+    </div>
+    <div class="card">
+      <h2>Records added</h2>
+      <div id="added"></div>
+      <div class="note">Cumulative counts by creation date. The 30-day figure includes the 7-day figure, and so on.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 id="typesTitle">Records by content type</h2>
+    <div id="types"></div>
+  </div>
+
+  <div class="card">
+    <h2 id="recentTitle">Added in the last 30 days</h2>
+    <div id="recent"></div>
+  </div>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var STALE_STEPS = [[30, '1 month'], [90, '3 months'], [180, '6 months'], [365, '12 months'], [730, '2 years'], [1095, '3 years']];
+  var state = { staleIdx: 3, minCount: 1, filter: '', mode: 'count' };
+  var D = null;
+
+  function fmt(n) { n = Number(n || 0); if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M'; if (n >= 1e4) return (n / 1e3).toFixed(1) + 'K'; return Math.round(n).toLocaleString(); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function count(id) { var r = D && D.results[id]; return r && typeof r.count === 'number' ? r.count : null; }
+  function rows(id) { var r = D && D.results[id]; return r && r.rows ? r.rows : []; }
+  function pct(a, b) { return b ? (a / b * 100) : 0; }
+
+  function renderKpis() {
+    var total = count('total') || 0, files = count('with_files'), c30 = count('created_30'), m30 = count('modified_30');
+    var staleDays = STALE_STEPS[state.staleIdx][0], fresh = count('modified_' + staleDays), stale = fresh == null ? null : Math.max(0, total - fresh);
+    $('kpis').innerHTML = [
+      ['Records', fmt(total), 'in the library', ''],
+      ['With files', files == null ? '–' : fmt(files), files == null ? '' : pct(files, total).toFixed(0) + '% of records', ''],
+      ['Added, 30 days', c30 == null ? '–' : fmt(c30), 'new records', ''],
+      ['Touched, 30 days', m30 == null ? '–' : fmt(m30), 'created or modified', ''],
+      ['Stale', stale == null ? '–' : fmt(stale), 'untouched over ' + STALE_STEPS[state.staleIdx][1] + (stale == null ? '' : ' · ' + pct(stale, total).toFixed(0) + '%'), stale && pct(stale, total) > 50 ? 'warn' : '']
+    ].map(function (k) { return '<div class="kpi ' + k[3] + '"><span class="l">' + k[0] + '</span><span class="v mono">' + k[1] + '</span><span class="d">' + k[2] + '</span></div>'; }).join('');
+  }
+
+  function renderAge() {
+    var total = count('total') || 0;
+    var cum = STALE_STEPS.map(function (s) { return count('modified_' + s[0]); });
+    // Convert cumulative counts into exclusive buckets.
+    var buckets = [], prev = 0;
+    for (var i = 0; i < STALE_STEPS.length; i++) { var c = cum[i]; if (c == null) { buckets.push({ label: '≤ ' + STALE_STEPS[i][1], value: null }); continue; } buckets.push({ label: (i === 0 ? '≤ ' : '') + (i === 0 ? STALE_STEPS[i][1] : STALE_STEPS[i - 1][1] + ' – ' + STALE_STEPS[i][1]), value: Math.max(0, c - prev) }); prev = c; }
+    buckets.push({ label: '> ' + STALE_STEPS[STALE_STEPS.length - 1][1], value: Math.max(0, total - prev) });
+    var colors = ['var(--rl-3)', 'var(--rl-3)', 'var(--rl-4)', 'var(--rl-4)', 'var(--rl-2)', 'var(--rl-2)', 'var(--rl-bad)'];
+    var staleFrom = state.staleIdx + 1; // buckets at index >= staleFrom are stale
+    $('stack').innerHTML = buckets.map(function (b, i) { var w = pct(b.value || 0, total); return '<i style="width:' + w + '%;background:' + colors[i] + ';opacity:' + (i >= staleFrom ? 1 : .55) + '" title="' + esc(b.label + ': ' + fmt(b.value || 0)) + '"></i>'; }).join('');
+    $('stackLegend').innerHTML = buckets.map(function (b, i) { return '<span><i style="background:' + colors[i] + '"></i>' + esc(b.label) + ' <span class="mono">' + (b.value == null ? '–' : fmt(b.value)) + '</span></span>'; }).join('');
+    var max = Math.max.apply(null, buckets.map(function (b) { return b.value || 0; })) || 1;
+    $('ageBars').innerHTML = buckets.map(function (b, i) { var v = b.value || 0; var shown = state.mode === 'share' ? pct(v, total).toFixed(1) + '%' : fmt(v); return '<div class="hbar"><span class="lab" style="' + (i >= staleFrom ? 'font-weight:600' : '') + '">' + esc(b.label) + '</span><span class="track"><span class="fill" style="width:' + Math.max(1, v / max * 100) + '%;background:' + colors[i] + '"></span></span><span class="val mono">' + shown + '</span></div>'; }).join('');
+    var staleCount = buckets.slice(staleFrom).reduce(function (s, b) { return s + (b.value || 0); }, 0);
+    $('staleNote').textContent = 'Bold buckets count as stale at the current threshold: ' + fmt(staleCount) + ' records (' + pct(staleCount, total).toFixed(1) + '%) have not been touched in over ' + STALE_STEPS[state.staleIdx][1] + '.';
+  }
+
+  function renderAdded() {
+    var total = count('total') || 0;
+    var items = [['7 days', count('created_7')], ['30 days', count('created_30')], ['90 days', count('created_90')], ['12 months', count('created_365')]];
+    var max = Math.max.apply(null, items.map(function (x) { return x[1] || 0; })) || 1;
+    $('added').innerHTML = items.map(function (x) { var v = x[1] || 0; var shown = state.mode === 'share' ? pct(v, total).toFixed(1) + '% of library' : fmt(v); return '<div class="hbar"><span class="lab">Last ' + x[0] + '</span><span class="track"><span class="fill" style="width:' + Math.max(1, v / max * 100) + '%;background:var(--rl-1)"></span></span><span class="val mono">' + shown + '</span></div>'; }).join('');
+  }
+
+  function renderTypes() {
+    var total = count('total') || 0, q = state.filter.trim().toLowerCase();
+    var list = rows('types').filter(function (t) { return t.count != null && t.count >= state.minCount; }).filter(function (t) { return !q || String(t.contentType).toLowerCase().indexOf(q) >= 0; }).sort(function (a, b) { return b.count - a.count; });
+    var all = rows('types').length, inUse = rows('types').filter(function (t) { return (t.count || 0) > 0; }).length;
+    $('typesTitle').textContent = 'Records by content type · ' + list.length + ' shown of ' + all + ' defined, ' + inUse + ' in use';
+    if (!list.length) { $('types').innerHTML = '<div class="empty">No content types match.</div>'; return; }
+    var max = list[0].count || 1;
+    $('types').innerHTML = list.map(function (t) { var shown = state.mode === 'share' ? pct(t.count, total).toFixed(1) + '%' : fmt(t.count); return '<div class="hbar"><span class="lab" title="' + esc(t.contentType) + '">' + esc(t.contentType) + '</span><span class="track"><span class="fill" style="width:' + Math.max(1, t.count / max * 100) + '%"></span></span><span class="val mono">' + shown + '</span></div>'; }).join('');
+  }
+
+  function renderRecent() {
+    var r = D.results.recent, items = rows('recent');
+    $('recentTitle').textContent = 'Added in the last 30 days' + (r && typeof r.count === 'number' ? ' · ' + fmt(r.count) + ' records, showing ' + items.length : '');
+    if (!items.length) { $('recent').innerHTML = '<div class="empty">Nothing added in the last 30 days.</div>'; return; }
+    $('recent').innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>Asset</th><th>Type</th><th>Status</th><th>File</th><th style="text-align:right">Size</th><th>Created</th></tr></thead><tbody>' + items.map(function (a) {
+      var thumb = a.thumbnail ? '<img class="thumb" src="' + esc(a.thumbnail) + '" alt="">' : '<span class="thumb ph">–</span>';
+      var size = a.fileSize ? (a.fileSize > 1048576 ? (a.fileSize / 1048576).toFixed(1) + ' MB' : Math.round(a.fileSize / 1024) + ' KB') : '';
+      return '<tr><td><a href="' + esc(a.link) + '" target="_blank" rel="noopener">' + thumb + esc(a.title) + '</a></td><td class="muted">' + esc(a.contentType || '') + '</td><td class="muted">' + esc(a.status || '') + '</td><td class="mono muted" style="font-size:11px">' + esc(a.fileName || '') + '</td><td class="n mono">' + size + '</td><td class="mono muted">' + esc(String(a.createdOn || '').slice(0, 10)) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+  }
+
+  function renderFoot() {
+    var failed = Object.keys(D.results).filter(function (k) { return D.results[k].error; });
+    $('foot').innerHTML = '<span>Library-state figures are as of now and do not depend on the date range.</span><span>Refreshed ' + esc(new Date(D.refreshedAt).toLocaleString()) + '</span><span>' + esc(D.environment) + '.dam.aprimo.com</span>' + (failed.length ? '<span style="color:var(--rl-bad)">' + failed.length + ' query error(s): ' + esc(failed.join(', ')) + '</span>' : '');
+  }
+
+  function render() { if (!D) return; renderKpis(); renderAge(); renderAdded(); renderTypes(); renderRecent(); renderFoot(); }
+
+  $('stale').addEventListener('input', function (e) { state.staleIdx = +e.target.value; $('staleLabel').textContent = STALE_STEPS[state.staleIdx][1]; renderKpis(); renderAge(); });
+  $('minCount').addEventListener('input', function (e) { state.minCount = +e.target.value; $('minLabel').textContent = state.minCount; renderTypes(); });
+  $('filter').addEventListener('input', function (e) { state.filter = e.target.value; renderTypes(); });
+  $('modeSeg').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; state.mode = b.getAttribute('data-m'); Array.prototype.forEach.call($('modeSeg').children, function (c) { c.classList.toggle('on', c === b); }); renderAge(); renderAdded(); renderTypes(); });
+
+  $('kpis').innerHTML = '<div class="kpi"><span class="l">Loading</span><span class="v muted">…</span><span class="d">Counting records in Aprimo</span></div>';
+  window.ReportLabs.onData(function (payload) { D = payload; var maxT = Math.max.apply(null, rows('types').map(function (t) { return t.count || 0; }).concat([1])); $('minCount').max = Math.min(1000, maxT); render(); });
+})();
+</script>

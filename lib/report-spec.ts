@@ -6,7 +6,7 @@
 // view never touches Aprimo itself, so a report can be refreshed at any time.
 
 import { queryAnalytics, getDateRange, getPriorRange, getGranularity, str, type AnalyticsQuery, type DateRange, type DateRangeKey, type Granularity } from "@/lib/analytics"
-import { countRecords, searchRecordCards, fetchRecordCards, type AprimoClient, type RecordCard } from "@/lib/core"
+import { countRecords, searchRecordCards, fetchRecordCards, listContentTypes, runThrottled, escapeExpr, dateLiteral, type AprimoClient, type RecordCard } from "@/lib/core"
 
 export type SpecQuery =
   | {
@@ -17,8 +17,11 @@ export type SpecQuery =
       /** When set, rows carrying this record-id member get _title, _thumbnail, _link, _contentType. */
       resolveTitles?: string
     }
+  /** Expressions may use $daysAgo(N) and $today, replaced with 'MM/DD/YYYY' literals. */
   | { id: string; kind: "search-count"; expression: string }
   | { id: string; kind: "search"; expression: string; pageSize?: number }
+  /** One count per content type: rows of { contentType, count }. */
+  | { id: string; kind: "content-type-counts"; extraExpression?: string }
 
 export interface ReportSpec {
   version: 1
@@ -54,6 +57,17 @@ export interface RunOutput {
 }
 
 const ALL_TIME_START = "2015-01-01"
+
+function expandDates(expression: string): string {
+  const now = new Date()
+  return expression
+    .replace(/\$daysAgo\((\d+)\)/g, (_, n) => {
+      const d = new Date(now)
+      d.setUTCDate(d.getUTCDate() - Number(n))
+      return dateLiteral(d)
+    })
+    .replace(/\$today/g, dateLiteral(now))
+}
 
 function substitute(q: SpecQuery & { kind: "analytics" }, range: DateRange, prior: DateRange, granularity: Granularity): AnalyticsQuery {
   const td = (q.query.timeDimensions ?? []).map((t) => ({
@@ -96,10 +110,20 @@ export async function runSpec(spec: ReportSpec, ctx: RunContext): Promise<RunOut
           }
           results[q.id] = { id: q.id, kind: q.kind, rows, ms: Date.now() - started }
         } else if (q.kind === "search-count") {
-          const count = await countRecords(ctx.client, q.expression)
+          const count = await countRecords(ctx.client, expandDates(q.expression))
           results[q.id] = { id: q.id, kind: q.kind, count, ms: Date.now() - started }
+        } else if (q.kind === "content-type-counts") {
+          const types = await listContentTypes(ctx.client)
+          const extra = q.extraExpression ? ` AND (${expandDates(q.extraExpression)})` : ""
+          const counts = await runThrottled(types.map((t) => () => countRecords(ctx.client, `ContentType = '${escapeExpr(t.name)}'${extra}`)), 4)
+          results[q.id] = {
+            id: q.id,
+            kind: q.kind,
+            rows: types.map((t, i) => ({ contentType: t.name, count: counts[i].status === "fulfilled" ? counts[i].value : null })),
+            ms: Date.now() - started,
+          }
         } else if (q.kind === "search") {
-          const { items, totalCount } = await searchRecordCards(ctx.client, q.expression, q.pageSize ?? 25)
+          const { items, totalCount } = await searchRecordCards(ctx.client, expandDates(q.expression), q.pageSize ?? 25)
           results[q.id] = {
             id: q.id,
             kind: q.kind,
@@ -125,6 +149,7 @@ export function validateSpec(spec: unknown): spec is ReportSpec {
     if (!q || typeof q.id !== "string") return false
     if (q.kind === "analytics") return !!q.query && typeof q.query === "object" && (q.query.limit ?? 0) <= 5000
     if (q.kind === "search-count" || q.kind === "search") return typeof q.expression === "string" && q.expression.length < 2000
+    if (q.kind === "content-type-counts") return q.extraExpression === undefined || (typeof q.extraExpression === "string" && q.extraExpression.length < 500)
     return false
   })
 }

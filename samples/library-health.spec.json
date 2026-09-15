@@ -1,0 +1,21 @@
+{
+  "title": "Library Health",
+  "description": "Governance dashboard: what the library holds by content type, how fresh it is, what was added recently, and how much is going stale. Adjustable staleness threshold and content-type filters.",
+  "version": 1,
+  "queries": [
+    { "id": "types", "kind": "content-type-counts" },
+    { "id": "total", "kind": "search-count", "expression": "NOT id = ''" },
+    { "id": "with_files", "kind": "search-count", "expression": "FileCount > 0" },
+    { "id": "created_7", "kind": "search-count", "expression": "CreatedOn >= $daysAgo(7)" },
+    { "id": "created_30", "kind": "search-count", "expression": "CreatedOn >= $daysAgo(30)" },
+    { "id": "created_90", "kind": "search-count", "expression": "CreatedOn >= $daysAgo(90)" },
+    { "id": "created_365", "kind": "search-count", "expression": "CreatedOn >= $daysAgo(365)" },
+    { "id": "modified_30", "kind": "search-count", "expression": "ModifiedOn >= $daysAgo(30)" },
+    { "id": "modified_90", "kind": "search-count", "expression": "ModifiedOn >= $daysAgo(90)" },
+    { "id": "modified_180", "kind": "search-count", "expression": "ModifiedOn >= $daysAgo(180)" },
+    { "id": "modified_365", "kind": "search-count", "expression": "ModifiedOn >= $daysAgo(365)" },
+    { "id": "modified_730", "kind": "search-count", "expression": "ModifiedOn >= $daysAgo(730)" },
+    { "id": "modified_1095", "kind": "search-count", "expression": "ModifiedOn >= $daysAgo(1095)" },
+    { "id": "recent", "kind": "search", "expression": "CreatedOn >= $daysAgo(30)", "pageSize": 20 }
+  ]
+}
