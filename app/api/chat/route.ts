@@ -328,12 +328,14 @@ export async function POST(req: NextRequest) {
           const defs = await mcp.listAllowedTools()
           for (const def of defs) {
             const schema = { ...(def.inputSchema as Record<string, unknown>), type: "object" } as { type: "object"; [k: string]: unknown }
+            // Prefixed so bridged names never collide with the built-in tools.
+            const exposedName = `aprimo_${def.name}`
             mcpTools.push(
               betaTool({
-                name: def.name,
+                name: exposedName,
                 description: def.description ?? def.name,
                 inputSchema: schema,
-                run: traced(def.name, async (input: unknown) => {
+                run: traced(exposedName, async (input: unknown) => {
                   const r = await mcp.callTool(def.name, (input ?? {}) as Record<string, unknown>)
                   if (r.isError) throw new Error(r.text.slice(0, 500))
                   return r.text
@@ -341,7 +343,7 @@ export async function POST(req: NextRequest) {
               }),
             )
           }
-          mcpNote = `Aprimo MCP tools are enabled (${defs.length} read-only tools: ${defs.map((d) => d.name).join(", ")}). Prefer list_records and get_record_metadata for titles, status, and metadata; they return proper titles and deep links. Use search_aprimo for keyword relevance. Analytics questions still go through query_analytics.`
+          mcpNote = `Aprimo MCP tools are enabled (${defs.length} read-only tools, all prefixed aprimo_: ${defs.map((d) => `aprimo_${d.name}`).join(", ")}). Prefer aprimo_list_records and aprimo_get_record_metadata for titles, status, and metadata; they return proper titles and deep links. Use aprimo_search_aprimo for keyword relevance. Analytics questions still go through query_analytics.`
         } catch (e) {
           mcpNote = `Aprimo MCP tools could not be connected (${e instanceof Error ? e.message : String(e)}); use the analytics and record tools only.`
         }
