@@ -27,6 +27,7 @@ export function TopBar() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/architecture" className="hidden md:inline text-xs text-muted-foreground hover:text-foreground mr-1">Architecture</Link>
           {connection?.environment && (
             <span className="hidden sm:inline-flex items-center gap-2 rounded-full border border-border px-2.5 py-1 text-xs font-mono">
               <span className={`h-1.5 w-1.5 rounded-full ${isConnected ? "bg-signal" : "bg-muted-foreground"}`} />
