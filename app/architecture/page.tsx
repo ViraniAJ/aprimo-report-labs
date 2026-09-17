@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { TopBar } from "@/components/topbar"
+import { MermaidDiagram } from "@/components/mermaid-diagram"
 
 export const metadata: Metadata = { title: "Architecture" }
 
@@ -26,68 +27,35 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   )
 }
 
-function Diagram() {
-  // Boxes: x, y, w, h. Colours via CSS vars so both themes hold.
-  const box = (x: number, y: number, w: number, h: number, label: string, sub?: string, accent?: string) => (
-    <g key={label}>
-      <rect x={x} y={y} width={w} height={h} rx={8} fill="var(--card)" stroke={accent ?? "var(--border)"} strokeWidth={accent ? 1.5 : 1} />
-      <text x={x + w / 2} y={y + (sub ? h / 2 - 4 : h / 2 + 5)} textAnchor="middle" fontSize="13" fontWeight="600" fill="var(--foreground)">{label}</text>
-      {sub && <text x={x + w / 2} y={y + h / 2 + 14} textAnchor="middle" fontSize="11" fill="var(--muted-foreground)">{sub}</text>}
-    </g>
-  )
-  const arrow = (x1: number, y1: number, x2: number, y2: number, color: string, dashed?: boolean) => (
-    <line key={`${x1}-${y1}-${x2}-${y2}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={1.75} strokeDasharray={dashed ? "5 4" : undefined} markerEnd="url(#arrow)" />
-  )
-  return (
-    <svg viewBox="0 0 960 400" className="w-full h-auto" role="img" aria-label="Report Labs data flow: browser to Aprimo APIs directly; server routes for token exchange, the assistant, and Supabase.">
-      <defs>
-        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted-foreground)" />
-        </marker>
-      </defs>
-      {/* Lanes */}
-      <text x={20} y={26} fontSize="11" fontWeight="600" letterSpacing="1.5" fill="var(--muted-foreground)">BROWSER · SIGNED-IN USER</text>
-      <text x={360} y={26} fontSize="11" fontWeight="600" letterSpacing="1.5" fill="var(--muted-foreground)">VERCEL SERVER ROUTES</text>
-      <text x={700} y={26} fontSize="11" fontWeight="600" letterSpacing="1.5" fill="var(--muted-foreground)">APRIMO · PER TENANT</text>
-      <line x1={340} y1={36} x2={340} y2={390} stroke="var(--border)" strokeDasharray="3 5" />
-      <line x1={680} y1={36} x2={680} y2={390} stroke="var(--border)" strokeDasharray="3 5" />
-
-      {box(20, 50, 300, 64, "Standard reports and saved dashboards", "queries run in the browser, as the user")}
-      {box(20, 150, 300, 56, "Assistant panel", "questions, previews, save")}
-      {box(20, 300, 300, 56, "Login and MCP consent", "PKCE, scopes api and mcp")}
-
-      {box(360, 50, 300, 56, "Chat route", "Claude tool loop, read-only tools", "var(--rl-2)")}
-      {box(360, 150, 300, 56, "Saved questions and reports", "service key, rows per user and environment")}
-      {box(360, 300, 300, 56, "Token exchange", "client secrets stay here")}
-
-      {box(700, 50, 240, 56, "Analytics API", "views, downloads, impressions, plays", "var(--rl-1)")}
-      {box(700, 150, 240, 56, "Core API", "records, counts, classifications", "var(--rl-1)")}
-      {box(700, 250, 240, 56, "MCP server", "23 of 200 tools, read-only", "var(--rl-5)")}
-
-      {box(360, 230, 140, 44, "Anthropic API", undefined, "var(--rl-2)")}
-      {box(520, 230, 140, 44, "Supabase")}
-
-      {/* Browser → Aprimo directly */}
-      {arrow(320, 70, 700, 70, "var(--rl-1)")}
-      {arrow(320, 90, 700, 172, "var(--rl-1)")}
-      {/* Panel → chat route */}
-      {arrow(320, 178, 360, 90, "var(--muted-foreground)")}
-      {arrow(320, 190, 360, 178, "var(--muted-foreground)")}
-      {/* Chat route → Aprimo + Anthropic + Supabase */}
-      {arrow(660, 66, 700, 66, "var(--rl-1)")}
-      {arrow(660, 90, 700, 162, "var(--rl-1)")}
-      {arrow(660, 100, 700, 268, "var(--rl-5)")}
-      {arrow(470, 106, 430, 230, "var(--rl-2)")}
-      {arrow(560, 106, 590, 230, "var(--muted-foreground)")}
-      {arrow(560, 206, 590, 230, "var(--muted-foreground)")}
-      {/* Login → token exchange → Aprimo */}
-      {arrow(320, 328, 360, 328, "var(--muted-foreground)", true)}
-      {arrow(660, 328, 700, 300, "var(--muted-foreground)", true)}
-
-      <text x={20} y={385} fontSize="11" fill="var(--muted-foreground)">Blue: REST calls with the user's token. Violet: MCP calls with the user's mcp token. Orange: model calls with the server key. Dashed: OAuth code exchange.</text>
-    </svg>
-  )
-}
+const FLOW = `flowchart LR
+  subgraph B [Browser · signed-in user]
+    R[Standard reports and saved dashboards]
+    P[Assistant panel]
+  end
+  subgraph S [Vercel server routes]
+    T[Token exchange]
+    C[Chat route · Claude tool loop]
+    D[Saved questions and reports]
+  end
+  subgraph A [Aprimo · per tenant]
+    AN[Analytics API]
+    CO[Core API]
+    M[MCP server]
+  end
+  X[(Supabase)]
+  L[Anthropic API]
+  R -- user token --> AN
+  R -- user token --> CO
+  P --> C
+  C -- user token --> AN
+  C -- user token --> CO
+  C -- user mcp token --> M
+  C --> L
+  C --> X
+  P --> D
+  D --> X
+  B -.-> T
+  T -.-> A`
 
 export default function ArchitecturePage() {
   return (
@@ -152,9 +120,9 @@ export default function ArchitecturePage() {
           <section className="flex flex-col gap-3">
             <h2 className="text-lg font-semibold tracking-tight">Where things run</h2>
             <div className="rounded-lg border border-border bg-card p-3 overflow-x-auto">
-              <div className="min-w-[760px]"><Diagram /></div>
+              <div className="min-w-[720px]"><MermaidDiagram definition={FLOW} /></div>
             </div>
-            <p className="text-xs text-muted-foreground">Report queries go straight from the browser to Aprimo. The server only exchanges tokens, runs the assistant, and reads and writes Supabase.</p>
+            <p className="text-xs text-muted-foreground">Solid lines carry the user&apos;s own tokens. The server only exchanges tokens, runs the assistant, and reads and writes Supabase.</p>
           </section>
 
           <section className="flex flex-col gap-4">

@@ -136,3 +136,6 @@
 .recharts-text {
   fill: var(--muted-foreground);
 }
+
+/* Mermaid diagrams: let the SVG size to its container */
+.mermaid-host svg { max-width: 100%; height: auto; }
