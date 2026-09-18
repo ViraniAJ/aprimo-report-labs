@@ -16,7 +16,7 @@ import { ReportProvider, type ReportParams } from "@/components/report-labs/repo
 import { AssistantPanel } from "@/components/report-labs/assistant-panel"
 import { SavedReportView } from "@/components/report-labs/saved-report-view"
 import { savedReports, SavedReportsUnavailable, type SavedReportSummary, type SavedReport } from "@/lib/saved-reports"
-import { Bookmark, Pencil, Pin, Trash2 } from "lucide-react"
+import { Bookmark, Copy, Pencil, Pin, Trash2, Users, Globe, Lock } from "lucide-react"
 import { toast } from "sonner"
 
 import { ExecutiveOverview } from "@/components/reports/executive-overview"
@@ -151,6 +151,34 @@ function Workspace() {
       toast.error(e instanceof Error ? e.message : "Could not update")
     }
   }
+  const shareSaved = async (r: SavedReportSummary) => {
+    const next = r.visibility === "environment" ? "private" : "environment"
+    try {
+      await savedReports.share(params.environment, params.accessToken, r.id, next)
+      toast.success(next === "environment" ? `Shared with everyone on ${params.environment}` : "Now private to you")
+      reloadSaved()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update sharing")
+    }
+  }
+  const copySaved = async (r: SavedReportSummary) => {
+    try {
+      const full = await savedReports.get(params.environment, params.accessToken, r.id)
+      const item = await savedReports.save(params.environment, params.accessToken, {
+        title: full.title,
+        description: full.description ?? undefined,
+        view: full.view,
+        spec: full.spec,
+        html: full.html ?? undefined,
+        source: "copy",
+      })
+      toast.success("Saved a copy to your reports")
+      await reloadSaved()
+      openSaved(item.id)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not copy")
+    }
+  }
   const deleteSaved = async (r: SavedReportSummary) => {
     if (!window.confirm(`Delete saved report "${r.title}"?`)) return
     try {
@@ -173,27 +201,34 @@ function Workspace() {
           >
             <Table2 className="h-4 w-4" /> All reports
           </button>
-          {saved && saved.length > 0 && (
-            <div className="mt-3">
-              <div className="px-4 py-1 text-[11px] uppercase tracking-[0.12em] text-muted-foreground flex items-center gap-1.5">
-                <Bookmark className="h-3 w-3" /> Saved reports
+          {[
+            { key: "mine", label: "Saved reports", icon: Bookmark, items: (saved ?? []).filter((r) => r.owner) },
+            { key: "shared", label: "Shared with you", icon: Users, items: (saved ?? []).filter((r) => !r.owner) },
+          ].map((group) =>
+            group.items.length === 0 ? null : (
+              <div key={group.key} className="mt-3">
+                <div className="px-4 py-1 text-[11px] uppercase tracking-[0.12em] text-muted-foreground flex items-center gap-1.5">
+                  <group.icon className="h-3 w-3" /> {group.label}
+                </div>
+                {group.items.map((r) => {
+                  const active = savedId === r.id
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => openSaved(r.id)}
+                      className={`w-full text-left pl-4 pr-3 py-1.5 text-sm flex items-center gap-2 transition-colors ${active ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}
+                      title={r.owner ? r.description ?? r.title : `Shared by ${r.user_login ?? "a colleague"}`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${active ? "bg-signal" : "bg-transparent"}`} />
+                      <span className="truncate">{r.title}</span>
+                      {r.owner && r.visibility === "environment" && <Globe className="h-3 w-3 ml-auto shrink-0 text-muted-foreground" />}
+                      {r.owner && r.pinned && <Pin className={`h-3 w-3 shrink-0 text-muted-foreground ${r.visibility === "environment" ? "" : "ml-auto"}`} />}
+                      {!r.owner && <span className="ml-auto shrink-0 text-[10px] text-muted-foreground truncate max-w-[80px]">{r.user_login}</span>}
+                    </button>
+                  )
+                })}
               </div>
-              {saved.map((r) => {
-                const active = savedId === r.id
-                return (
-                  <button
-                    key={r.id}
-                    onClick={() => openSaved(r.id)}
-                    className={`w-full text-left pl-4 pr-3 py-1.5 text-sm flex items-center gap-2 transition-colors ${active ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}
-                    title={r.description ?? r.title}
-                  >
-                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${active ? "bg-signal" : "bg-transparent"}`} />
-                    <span className="truncate">{r.title}</span>
-                    {r.pinned && <Pin className="h-3 w-3 ml-auto shrink-0 text-muted-foreground" />}
-                  </button>
-                )
-              })}
-            </div>
+            ),
           )}
           {REPORT_GROUPS.map((g) => {
             const Icon = GROUP_ICONS[g]
@@ -246,19 +281,37 @@ function Workspace() {
             </div>
             <h1 className="text-lg font-semibold leading-tight truncate tracking-tight">{report ? report.title : savedReport ? savedReport.title : savedId ? "Saved report" : "All reports"}</h1>
             {report && <p className="text-xs text-muted-foreground truncate">{report.description}</p>}
-            {savedReport?.description && <p className="text-xs text-muted-foreground truncate">{savedReport.description}</p>}
+            {savedReport && (
+              <p className="text-xs text-muted-foreground truncate">
+                {savedReport.owner ? (savedReport.visibility === "environment" ? `Shared with everyone on ${params.environment}. ` : "") : `Shared by ${savedReport.user_login ?? "a colleague"}. Runs with your permissions. `}
+                {savedReport.description}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {savedReport && (
+            {savedReport && savedReport.owner && (
               <>
                 <Button variant="ghost" size="sm" className="h-8" onClick={() => setAssistantOpen(true)} title="Edit this report with the assistant">
                   <Pencil className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" className="h-8" onClick={() => shareSaved(savedReport)} title={savedReport.visibility === "environment" ? "Shared with everyone on this environment. Click to make private." : "Private to you. Click to share with everyone on this environment."}>
+                  {savedReport.visibility === "environment" ? <Globe className="h-4 w-4" style={{ color: "var(--rl-1)" }} /> : <Lock className="h-4 w-4 text-muted-foreground" />}
                 </Button>
                 <Button variant="ghost" size="sm" className="h-8" onClick={() => pinSaved(savedReport)} title={savedReport.pinned ? "Unpin" : "Pin to top"}>
                   <Pin className={`h-4 w-4 ${savedReport.pinned ? "" : "text-muted-foreground"}`} style={savedReport.pinned ? { color: "var(--rl-good)" } : undefined} />
                 </Button>
                 <Button variant="ghost" size="sm" className="h-8 text-muted-foreground" onClick={() => deleteSaved(savedReport)} title="Delete saved report">
                   <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+            {savedReport && !savedReport.owner && (
+              <>
+                <Button variant="ghost" size="sm" className="h-8" onClick={() => setAssistantOpen(true)} title="Tweak this report with the assistant; saving makes your own copy">
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" className="h-8" onClick={() => copySaved(savedReport)} title="Save a copy you can edit">
+                  <Copy className="h-4 w-4 mr-1.5" /> Save a copy
                 </Button>
               </>
             )}
@@ -308,7 +361,7 @@ function Workspace() {
                   accessToken: params.accessToken,
                   authHeader: params.authHeader,
                   client: params.client,
-                  editingReport: openSavedReport && openSavedReport.id === savedId && openSavedReport.html ? { id: openSavedReport.id, title: openSavedReport.title, description: openSavedReport.description, spec: openSavedReport.spec, html: openSavedReport.html } : undefined,
+                  editingReport: openSavedReport && openSavedReport.id === savedId && openSavedReport.html ? { id: openSavedReport.id, title: openSavedReport.title, description: openSavedReport.description, spec: openSavedReport.spec, html: openSavedReport.html, owner: openSavedReport.owner } : undefined,
                   reportId: report?.id,
                   reportTitle: report?.title,
                   dateRangeKey,
@@ -328,24 +381,32 @@ function Workspace() {
 function Catalogue({ onOpen, onAsk, saved, onOpenSaved }: { onOpen: (id: string) => void; onAsk: () => void; saved: SavedReportSummary[]; onOpenSaved: (id: string) => void }) {
   return (
     <div className="flex flex-col gap-7 max-w-6xl">
-      {saved.length > 0 && (
-        <section>
-          <h3 className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground flex items-center gap-1.5 mb-2">
-            <Bookmark className="h-3.5 w-3.5" /> Your saved reports
-          </h3>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {saved.map((r) => (
-              <button key={r.id} onClick={() => onOpenSaved(r.id)} className="text-left rounded-lg border border-border bg-card p-4 hover:border-foreground/40 transition-colors flex flex-col gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium truncate">{r.title}</span>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono shrink-0">{r.view === "html" ? "dashboard" : "report"}</Badge>
-                </div>
-                {r.description && <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{r.description}</p>}
-                <span className="text-[11px] text-muted-foreground mt-auto">Updated {new Date(r.updated_at).toLocaleDateString()}</span>
-              </button>
-            ))}
-          </div>
-        </section>
+      {[
+        { key: "mine", label: "Your saved reports", icon: Bookmark, items: saved.filter((r) => r.owner) },
+        { key: "shared", label: "Shared with you", icon: Users, items: saved.filter((r) => !r.owner) },
+      ].map((group) =>
+        group.items.length === 0 ? null : (
+          <section key={group.key}>
+            <h3 className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground flex items-center gap-1.5 mb-2">
+              <group.icon className="h-3.5 w-3.5" /> {group.label}
+            </h3>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {group.items.map((r) => (
+                <button key={r.id} onClick={() => onOpenSaved(r.id)} className="text-left rounded-lg border border-border bg-card p-4 hover:border-foreground/40 transition-colors flex flex-col gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium truncate">{r.title}</span>
+                    <span className="flex items-center gap-1 shrink-0">
+                      {r.owner && r.visibility === "environment" && <Globe className="h-3 w-3 text-muted-foreground" />}
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">{r.view === "html" ? "dashboard" : "report"}</Badge>
+                    </span>
+                  </div>
+                  {r.description && <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{r.description}</p>}
+                  <span className="text-[11px] text-muted-foreground mt-auto">{r.owner ? "" : `By ${r.user_login ?? "a colleague"} · `}Updated {new Date(r.updated_at).toLocaleDateString()}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ),
       )}
       <div className="flex flex-col md:flex-row md:items-center gap-4">
         <p className="text-sm text-muted-foreground flex-1 max-w-2xl">

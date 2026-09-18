@@ -9,6 +9,11 @@ export interface SavedReportSummary {
   view: "html" | "standard"
   source: string
   pinned: boolean
+  /** private: only the owner. environment: everyone signed in to this Aprimo environment. */
+  visibility: "private" | "environment"
+  /** True when the signed-in user created it. Only owners can edit, share, pin, or delete. */
+  owner: boolean
+  user_login: string | null
   created_at: string
   updated_at: string
 }
@@ -33,6 +38,7 @@ export const savedReports = {
   get: (env: string, token: string, id: string) => call<{ item: SavedReport }>(env, token, "get", { id }).then((r) => r.item),
   save: (env: string, token: string, r: { id?: string; title: string; description?: string; view: "html" | "standard"; spec: ReportSpec; html?: string; source?: string }) =>
     call<{ item: SavedReportSummary }>(env, token, "save", r).then((x) => x.item),
+  share: (env: string, token: string, id: string, visibility: "private" | "environment") => call<{ item: SavedReportSummary }>(env, token, "share", { id, visibility }).then((r) => r.item),
   pin: (env: string, token: string, id: string, pinned: boolean) => call<{ item: SavedReportSummary }>(env, token, "pin", { id, pinned }).then((r) => r.item),
   remove: (env: string, token: string, id: string) => call<{ ok: true }>(env, token, "delete", { id }),
 }

@@ -48,7 +48,7 @@ export interface AssistantContext {
   authHeader?: string
   client?: AprimoClient
   /** The saved report currently open, so the assistant can edit it in place. */
-  editingReport?: { id: string; title: string; description: string | null; spec: ReportSpec; html: string }
+  editingReport?: { id: string; title: string; description: string | null; spec: ReportSpec; html: string; owner: boolean }
   reportId?: string
   reportTitle?: string
   dateRangeKey: DateRangeKey
@@ -374,7 +374,7 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
         <div className="min-w-0">
           <div className="text-sm font-medium leading-tight">Ask Report Labs</div>
           <div className="text-[11px] text-muted-foreground truncate">
-            {context.editingReport ? `Editing saved report: ${context.editingReport.title}` : context.reportTitle ? `Context: ${context.reportTitle}` : "Ask anything about usage or the library"}
+            {context.editingReport ? `${context.editingReport.owner ? "Editing saved report" : "Tweaking shared report"}: ${context.editingReport.title}` : context.reportTitle ? `Context: ${context.reportTitle}` : "Ask anything about usage or the library"}
             {context.dateRange ? ` · ${context.dateRange[0]} to ${context.dateRange[1]}` : " · all time"}
           </div>
         </div>
@@ -543,7 +543,8 @@ function ProposalCard({ report, context }: { report: ProposedReport; context: As
   const router = useRouter()
   const [data, setData] = useState<RunOutput | null>(null)
   const [running, setRunning] = useState(false)
-  const [savedId, setSavedId] = useState<string | null>(context.editingReport?.id ?? null)
+  // A shared report someone else owns can be tweaked, but saving makes the user's own copy.
+  const [savedId, setSavedId] = useState<string | null>(context.editingReport?.owner ? context.editingReport.id : null)
   const [saving, setSaving] = useState(false)
   const [open, setOpen] = useState(true)
 

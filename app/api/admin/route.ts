@@ -46,6 +46,7 @@ export interface SavedReportSummary {
   source: string
   pinned: boolean
   view: string
+  visibility: string
   updated_at: string
 }
 
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
       await classifyPending(db, env)
       const [{ data: rows, error: e1 }, { data: saved, error: e2 }, { data: ins, error: e3 }] = await Promise.all([
         db.from("assistant_log").select("id, created_at, user_id, user_login, question, report_id, date_range, mcp_enabled, tools, answer_chars, input_tokens, output_tokens, cache_read_tokens, duration_ms, error, intent, topics, wants_dashboard, matched_report").eq("environment", env).order("created_at", { ascending: false }).limit(MAX_ROWS),
-        db.from("saved_reports").select("id, user_login, title, source, pinned, view, updated_at").eq("environment", env).order("updated_at", { ascending: false }).limit(200),
+        db.from("saved_reports").select("id, user_login, title, source, pinned, view, visibility, updated_at").eq("environment", env).order("updated_at", { ascending: false }).limit(200),
         db.from("admin_insights").select("id, generated_by, window_days, markdown, created_at").eq("environment", env).order("created_at", { ascending: false }).limit(1),
       ])
       if (e1) throw e1

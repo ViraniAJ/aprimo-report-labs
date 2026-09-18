@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
       dateRangeKey?: string
       dateRange?: [string, string] | null
       collectionName?: string | null
-      editingReport?: { id: string; title: string; description?: string | null; spec: unknown; html: string }
+      editingReport?: { id: string; title: string; description?: string | null; spec: unknown; html: string; owner?: boolean }
     }
   }
   try {
@@ -363,7 +363,7 @@ export async function POST(req: NextRequest) {
         `Available standard reports: ${REPORTS.map((r) => r.title).join(", ")}. When a standard report answers the question, mention it by name.`,
         mcpNote,
         context?.editingReport
-          ? `The user has their saved dashboard "${context.editingReport.title}" open and may ask you to change it. Its current spec and view are below. For any change, call propose_report with the FULL revised report, keeping the same title unless asked to rename; saving will update this report in place.\n\nCURRENT SPEC:\n${JSON.stringify(context.editingReport.spec)}\n\nCURRENT HTML:\n${context.editingReport.html.slice(0, 60_000)}`
+          ? `The user has their saved dashboard "${context.editingReport.title}" open and may ask you to change it. Its current spec and view are below. For any change, call propose_report with the FULL revised report, keeping the same title unless asked to rename; ${context.editingReport.owner === false ? "the report is shared by a colleague, so saving creates the user's own copy." : "saving will update this report in place."}\n\nCURRENT SPEC:\n${JSON.stringify(context.editingReport.spec)}\n\nCURRENT HTML:\n${context.editingReport.html.slice(0, 60_000)}`
           : "",
       ]
         .filter(Boolean)

@@ -131,7 +131,7 @@ export default function ArchitecturePage() {
               <Card title="Stored in Supabase">
                 <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5">
                   <dt className="font-mono text-xs text-foreground">saved_questions</dt><dd>Bookmarked questions per user and environment</dd>
-                  <dt className="font-mono text-xs text-foreground">saved_reports</dt><dd>Dashboard specs and views the user saved</dd>
+                  <dt className="font-mono text-xs text-foreground">saved_reports</dt><dd>Dashboard specs and views the user saved, private or shared with their environment</dd>
                   <dt className="font-mono text-xs text-foreground">admin_insights</dt><dd>Periodic summaries of the question log for admins</dd>
                   <dt className="font-mono text-xs text-foreground">assistant_log</dt><dd>One row per question: the question text, who asked, tools called, tokens, duration, errors, and a theme label added afterwards</dd>
                 </dl>

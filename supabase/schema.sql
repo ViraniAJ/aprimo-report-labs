@@ -81,3 +81,9 @@ create table if not exists admin_insights (
 );
 create index if not exists admin_insights_env_idx on admin_insights (environment, created_at desc);
 alter table admin_insights enable row level security;
+
+-- Sharing: a saved report is private to its owner or visible to everyone in
+-- the same Aprimo environment. Viewers run it as themselves, so their own
+-- permissions apply; only the owner can edit, pin, share, or delete it.
+alter table saved_reports add column if not exists visibility text not null default 'private' check (visibility in ('private', 'environment'));
+create index if not exists saved_reports_shared_idx on saved_reports (environment, visibility, updated_at desc);

@@ -412,6 +412,7 @@ export default function AdminPage() {
                       { key: "title", header: "Title" },
                       { key: "user_login", header: "Who" },
                       { key: "source", header: "Source", render: (r) => <span className="text-muted-foreground">{String(r.source)}</span> },
+                      { key: "visibility", header: "Shared", render: (r) => <span className="text-muted-foreground">{r.visibility === "environment" ? "everyone" : ""}</span> },
                       { key: "pinned", header: "Pinned", render: (r) => <span className="text-muted-foreground">{r.pinned ? "yes" : ""}</span> },
                       { key: "updated_at", header: "Updated", render: (r) => <span className="text-muted-foreground whitespace-nowrap">{fmtWhen(String(r.updated_at))}</span> },
                     ]}
