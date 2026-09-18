@@ -58,3 +58,26 @@ create table if not exists saved_reports (
 );
 create index if not exists saved_reports_user_idx on saved_reports (environment, user_id, pinned desc, updated_at desc);
 alter table saved_reports enable row level security;
+
+-- Question intelligence: each assistant question is classified after the fact
+-- (theme, topics, whether a dashboard was wanted, which standard report covers
+-- it) so admins can see what people ask for and where the gaps are.
+alter table assistant_log add column if not exists intent text;
+alter table assistant_log add column if not exists topics jsonb;
+alter table assistant_log add column if not exists wants_dashboard boolean;
+alter table assistant_log add column if not exists matched_report text;
+alter table assistant_log add column if not exists classified_at timestamptz;
+
+-- Admin insights: Claude's periodic read of the question log, kept so the
+-- admin page loads instantly and the history of recommendations is retained.
+create table if not exists admin_insights (
+  id           uuid primary key default gen_random_uuid(),
+  environment  text not null,
+  generated_by text,
+  window_days  integer,
+  stats        jsonb,
+  markdown     text not null,
+  created_at   timestamptz not null default now()
+);
+create index if not exists admin_insights_env_idx on admin_insights (environment, created_at desc);
+alter table admin_insights enable row level security;
