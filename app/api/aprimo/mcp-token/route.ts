@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
 
 // Token exchange and refresh for the Aprimo MCP consent flow (scope "mcp").
-// The MCP registration is confidential, so its secret lives here and never
-// reaches the browser. Two grants:
-//   { grant: "code", environment, clientId, code, codeVerifier, redirectUri }
-//   { grant: "refresh", environment, clientId, refreshToken }
+// The secret is chosen per registration: the deployment's own (server-side)
+// for the default environment, APRIMO_MCP_CLIENT_SECRET_<ENV> when an admin
+// preconfigured one, else the secret from the user's browser profile. Grants:
+//   { grant: "code", environment, clientId, clientSecret?, code, codeVerifier, redirectUri }
+//   { grant: "refresh", environment, clientId, clientSecret?, refreshToken }
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { grant, environment, clientId } = body
     if (!environment || !clientId || !grant) return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     if (!/^[a-z0-9-]+$/i.test(environment)) return NextResponse.json({ error: "Invalid environment" }, { status: 400 })
-    // The MCP registration is per environment; APRIMO_MCP_CLIENT_SECRET_<ENV> overrides the default.
-    const clientSecret = process.env[`APRIMO_MCP_CLIENT_SECRET_${String(environment).toUpperCase().replace(/-/g, "_")}`] || process.env.APRIMO_MCP_CLIENT_SECRET
-    if (!clientSecret) return NextResponse.json({ error: "APRIMO_MCP_CLIENT_SECRET is not configured on the server" }, { status: 503 })
+    const isDefault = String(environment).toLowerCase() === (process.env.NEXT_PUBLIC_APRIMO_ENVIRONMENT ?? "").toLowerCase() && clientId === process.env.NEXT_PUBLIC_APRIMO_MCP_CLIENT_ID?.trim()
+    const perEnv = process.env[`APRIMO_MCP_CLIENT_SECRET_${String(environment).toUpperCase().replace(/-/g, "_")}`]
+    const clientSecret: string | undefined = (isDefault ? process.env.APRIMO_MCP_CLIENT_SECRET : undefined) || perEnv || (typeof body.clientSecret === "string" && body.clientSecret) || undefined
+    if (!clientSecret) return NextResponse.json({ error: `No MCP client secret for ${environment}. Add it to the environment's connection profile.` }, { status: 503 })
 
     const params = new URLSearchParams()
     params.append("client_id", clientId)

@@ -33,8 +33,12 @@ Deploy to Vercel with the same variables. Without the Aprimo variables, users ad
 | `NEXT_PUBLIC_APRIMO_CLIENT_ID` | Recommended | PKCE registration client id |
 | `APRIMO_CLIENT_SECRET` | If the registration has one | Server-side only |
 | `ANTHROPIC_API_KEY` | For the assistant | Server-side only |
-| `NEXT_PUBLIC_APRIMO_MCP_CLIENT_ID` | For Aprimo tools in the assistant | Client id of an MCP-type registration with redirect URI `/oauth/mcp-callback` |
+| `NEXT_PUBLIC_APRIMO_MCP_CLIENT_ID` | For Aprimo tools in the assistant on the default environment | Client id of an MCP-type registration with redirect URI `/oauth/mcp-callback` |
 | `APRIMO_MCP_CLIENT_SECRET` | With the above | Server-side only |
+| `APRIMO_CLIENT_SECRET_<ENV>`, `APRIMO_MCP_CLIENT_SECRET_<ENV>` | Optional | Secrets for other environments users add as profiles, so they need not type one. Upper-case environment, dashes as underscores |
+| `REPORT_LABS_ADMINS` | For the `/admin` page | Comma-separated Aprimo logins |
+
+Users can add further environments from the gear in the top bar. A profile holds the PKCE registration for sign-in and, optionally, the MCP-type registration for that environment; the assistant's "Enable Aprimo tools" uses whichever matches the environment they are signed in to.
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | For saved questions and the usage log | Server-side only; injected by the Vercel Supabase integration. Apply `supabase/schema.sql` once |
 | `REPORT_LABS_MODEL` | No | Defaults to `claude-opus-5` |
 | `NEXT_PUBLIC_RECORD_LABEL_FIELD` | No | Internal field name used as the record label in rankings. Falls back to the record title, then the master file name |

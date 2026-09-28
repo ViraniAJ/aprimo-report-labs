@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Pencil, Trash2, Plus, ArrowLeft } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 
 // Connection handling for Report Labs.
 //
@@ -21,51 +22,7 @@ import { Pencil, Trash2, Plus, ArrowLeft } from "lucide-react"
 // "Connect" goes straight to the last-used profile; the gear, the environment
 // pill, and "Other environment" open this dialog to switch or manage.
 
-const ENV_ENVIRONMENT = process.env.NEXT_PUBLIC_APRIMO_ENVIRONMENT ?? ""
-const ENV_CLIENT_ID = process.env.NEXT_PUBLIC_APRIMO_CLIENT_ID ?? ""
-const ALL_FROM_ENV = !!(ENV_ENVIRONMENT && ENV_CLIENT_ID)
-
-interface ConnectionProfile {
-  id: string
-  name: string
-  environment: string
-  clientId: string
-  clientSecret: string
-  /** The deployment's default, from env vars. Cannot be edited or deleted. */
-  builtIn?: boolean
-}
-
-const DEFAULT_PROFILE: ConnectionProfile | null = ALL_FROM_ENV
-  ? { id: "default", name: `${ENV_ENVIRONMENT} (default)`, environment: ENV_ENVIRONMENT, clientId: ENV_CLIENT_ID, clientSecret: "", builtIn: true }
-  : null
-
-const PROFILES_KEY = "report_labs_profiles"
-const LAST_PROFILE_KEY = "report_labs_last_profile_id"
-
-function loadProfiles(): ConnectionProfile[] {
-  try {
-    const raw = localStorage.getItem(PROFILES_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
-  }
-}
-
-function persistProfiles(profiles: ConnectionProfile[]) {
-  localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles.filter((p) => !p.builtIn)))
-}
-
-/** Built-in default first, then the user's own. */
-function allProfiles(): ConnectionProfile[] {
-  return DEFAULT_PROFILE ? [DEFAULT_PROFILE, ...loadProfiles()] : loadProfiles()
-}
-
-/** The profile "Connect" should use without asking: last used, else the default. */
-function lastUsedProfile(): ConnectionProfile | null {
-  const all = allProfiles()
-  const lastId = localStorage.getItem(LAST_PROFILE_KEY)
-  return (lastId ? all.find((p) => p.id === lastId) : null) ?? DEFAULT_PROFILE ?? all[0] ?? null
-}
+import { type ConnectionProfile, DEFAULT_PROFILE, ENV_ENVIRONMENT, LAST_PROFILE_KEY, loadProfiles, persistProfiles, allProfiles, lastUsedProfile } from "@/lib/profiles"
 
 function startOAuth(environment: string, clientId: string, clientSecret?: string) {
   generatePKCE().then(({ codeVerifier, codeChallenge }) => {
@@ -92,6 +49,8 @@ export function AprimoConfigDialog() {
   const [formEnvironment, setFormEnvironment] = useState("")
   const [formClientId, setFormClientId] = useState("")
   const [formClientSecret, setFormClientSecret] = useState("")
+  const [formMcpClientId, setFormMcpClientId] = useState("")
+  const [formMcpClientSecret, setFormMcpClientSecret] = useState("")
   const hasAttempted = useRef(false)
 
   function showDialog() {
@@ -143,6 +102,8 @@ export function AprimoConfigDialog() {
     setFormEnvironment("")
     setFormClientId("")
     setFormClientSecret("")
+    setFormMcpClientId("")
+    setFormMcpClientSecret("")
     setView("edit")
   }
 
@@ -152,6 +113,8 @@ export function AprimoConfigDialog() {
     setFormEnvironment(profile.environment)
     setFormClientId(profile.clientId)
     setFormClientSecret(profile.clientSecret)
+    setFormMcpClientId(profile.mcpClientId ?? "")
+    setFormMcpClientSecret(profile.mcpClientSecret ?? "")
     setView("edit")
   }
 
@@ -162,6 +125,8 @@ export function AprimoConfigDialog() {
       environment: formEnvironment.trim(),
       clientId: formClientId.trim(),
       clientSecret: formClientSecret.trim(),
+      mcpClientId: formMcpClientId.trim() || undefined,
+      mcpClientSecret: formMcpClientSecret.trim() || undefined,
     }
     const updated = editing ? profiles.map((p) => (p.id === editing.id ? profile : p)) : [...profiles, profile]
     persistProfiles(updated)
@@ -208,6 +173,10 @@ export function AprimoConfigDialog() {
                     <div className="text-sm font-medium truncate">{p.name}</div>
                     <div className="text-xs text-muted-foreground font-mono truncate">{p.environment}.dam.aprimo.com</div>
                   </div>
+                  <span className="flex gap-1 shrink-0">
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">API</Badge>
+                    {p.mcpClientId && <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">MCP</Badge>}
+                  </span>
                   {!p.builtIn && (
                     <>
                       <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Edit" onClick={() => openEdit(p)}>
@@ -234,9 +203,9 @@ export function AprimoConfigDialog() {
           <>
             <DialogHeader>
               <DialogTitle>{editing ? "Edit environment" : "Add environment"}</DialogTitle>
-              <DialogDescription>Enter the Aprimo environment and the client id of a PKCE registration whose redirect URI is this site's /oauth/callback.</DialogDescription>
+              <DialogDescription>Two registrations from Aprimo&apos;s Settings, Registrations. Sign-in needs a PKCE one; the assistant&apos;s Aprimo tools need an MCP-type one.</DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-2">
+            <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto pr-1">
               <div className="space-y-1.5">
                 <Label htmlFor="profile-name">Name</Label>
                 <Input id="profile-name" placeholder={formEnvironment || "Production"} value={formName} onChange={(e) => setFormName(e.target.value)} />
@@ -248,6 +217,7 @@ export function AprimoConfigDialog() {
                   The subdomain: <span className="font-mono">acme</span> for acme.dam.aprimo.com
                 </p>
               </div>
+              <div className="pt-1 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Sign-in · PKCE registration · redirect {typeof window !== "undefined" ? window.location.origin : ""}/oauth/callback</div>
               <div className="space-y-1.5">
                 <Label htmlFor="profile-client-id">Client ID</Label>
                 <Input id="profile-client-id" placeholder="XXXXXXXX-XXXX" value={formClientId} onChange={(e) => setFormClientId(e.target.value)} />
@@ -256,6 +226,16 @@ export function AprimoConfigDialog() {
                 <Label htmlFor="profile-client-secret">Client secret</Label>
                 <Input id="profile-client-secret" type="password" placeholder="From the same registration" value={formClientSecret} onChange={(e) => setFormClientSecret(e.target.value)} />
                 <p className="text-xs text-muted-foreground">Needed unless this deployment holds a secret for that environment. Stored only in this browser and sent only to this site&apos;s token exchange.</p>
+              </div>
+              <div className="pt-2 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Aprimo tools · MCP registration · redirect {typeof window !== "undefined" ? window.location.origin : ""}/oauth/mcp-callback · optional</div>
+              <div className="space-y-1.5">
+                <Label htmlFor="profile-mcp-client-id">MCP client ID</Label>
+                <Input id="profile-mcp-client-id" placeholder="XXXXXXXX-XXXX" value={formMcpClientId} onChange={(e) => setFormMcpClientId(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="profile-mcp-client-secret">MCP client secret</Label>
+                <Input id="profile-mcp-client-secret" type="password" placeholder="From the MCP registration" value={formMcpClientSecret} onChange={(e) => setFormMcpClientSecret(e.target.value)} />
+                <p className="text-xs text-muted-foreground">Leave both blank to use reports and the assistant without Aprimo tools on this environment.</p>
               </div>
             </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">

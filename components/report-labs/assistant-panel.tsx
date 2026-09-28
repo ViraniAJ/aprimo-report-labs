@@ -12,7 +12,8 @@ import type { ReportSpec } from "@/lib/report-spec-types"
 import { HtmlReportFrame } from "@/components/report-labs/html-report-frame"
 import type { AprimoClient } from "@/lib/core"
 import { useRouter } from "next/navigation"
-import { MCP_CONFIGURED, readMcpTokens, getMcpToken, startMcpConsent, clearMcpTokens } from "@/lib/mcp-auth"
+import { mcpConfigured, readMcpTokens, getMcpToken, startMcpConsent, clearMcpTokens } from "@/lib/mcp-auth"
+import { openConnectionManager } from "@/lib/profiles"
 import { Button } from "@/components/ui/button"
 import { RankedBars, TrendChart } from "@/components/report-labs/charts"
 import type { DateRange, DateRangeKey } from "@/lib/analytics"
@@ -380,16 +381,20 @@ export function AssistantPanel({ context, onClose, embedded }: { context: Assist
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
-        {MCP_CONFIGURED && (
+        {mcpConfigured(context.environment) ? (
           mcpEnabled ? (
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={clearMcpTokens} title="Aprimo tools are enabled for this session. Click to disable.">
               <PlugZap className="h-3.5 w-3.5 mr-1 text-signal-foreground" style={{ color: "var(--rl-good)" }} /> Aprimo tools on
             </Button>
           ) : (
-            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => startMcpConsent(context.environment)} title="Grant the assistant read-only access to Aprimo's MCP tools, as you.">
+            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => startMcpConsent(context.environment).catch((e) => toast.error(e instanceof Error ? e.message : String(e)))} title="Grant the assistant read-only access to Aprimo's MCP tools, as you.">
               <Plug className="h-3.5 w-3.5 mr-1" /> Enable Aprimo tools
             </Button>
           )
+        ) : (
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground" onClick={openConnectionManager} title={`No MCP registration is set for ${context.environment}. Add its MCP client id and secret to the environment's connection profile to enable Aprimo tools.`}>
+            <Plug className="h-3.5 w-3.5 mr-1" /> Add MCP registration
+          </Button>
         )}
         {messages.length > 0 && (
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={clear} title="Clear conversation">

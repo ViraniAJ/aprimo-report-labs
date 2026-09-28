@@ -5,9 +5,12 @@
 // to registration types and will not issue both on one token.
 
 import { generatePKCE } from "@/lib/pkce"
+import { mcpRegistrationFor } from "@/lib/profiles"
 
-export const MCP_CLIENT_ID = process.env.NEXT_PUBLIC_APRIMO_MCP_CLIENT_ID?.trim() || ""
-export const MCP_CONFIGURED = !!MCP_CLIENT_ID
+/** Whether an MCP registration is known for this environment (default or profile). */
+export function mcpConfigured(environment: string): boolean {
+  return !!mcpRegistrationFor(environment)
+}
 
 const KEY = "report_labs_mcp"
 const PENDING = "report_labs_mcp_pending"
@@ -46,13 +49,14 @@ export function clearMcpTokens() {
 
 /** Starts the consent flow; the browser navigates away and returns via /oauth/mcp-callback. */
 export async function startMcpConsent(environment: string) {
-  if (!MCP_CLIENT_ID) throw new Error("NEXT_PUBLIC_APRIMO_MCP_CLIENT_ID is not set")
+  const reg = mcpRegistrationFor(environment)
+  if (!reg) throw new Error(`No MCP registration for ${environment}. Add one to the environment's connection profile.`)
   const { codeVerifier, codeChallenge } = await generatePKCE()
   const state = crypto.randomUUID()
-  sessionStorage.setItem(PENDING, JSON.stringify({ environment, codeVerifier, state, returnUrl: window.location.href }))
+  sessionStorage.setItem(PENDING, JSON.stringify({ environment, clientId: reg.clientId, codeVerifier, state, returnUrl: window.location.href }))
   const params = new URLSearchParams({
     response_type: "code",
-    client_id: MCP_CLIENT_ID,
+    client_id: reg.clientId,
     redirect_uri: mcpCallbackUri(),
     scope: "mcp offline_access",
     code_challenge: codeChallenge,
@@ -63,7 +67,7 @@ export async function startMcpConsent(environment: string) {
   window.location.href = `https://${environment}.aprimo.com/login/connect/authorize?${params.toString()}`
 }
 
-export function readPendingConsent(): { environment: string; codeVerifier: string; state: string; returnUrl: string } | null {
+export function readPendingConsent(): { environment: string; clientId: string; codeVerifier: string; state: string; returnUrl: string } | null {
   try {
     const raw = sessionStorage.getItem(PENDING)
     return raw ? JSON.parse(raw) : null
@@ -87,7 +91,8 @@ export async function completeMcpConsent(code: string, state: string): Promise<M
   const pending = readPendingConsent()
   if (!pending) throw new Error("No consent in progress")
   if (pending.state !== state) throw new Error("State mismatch")
-  const data = await exchange({ grant: "code", environment: pending.environment, clientId: MCP_CLIENT_ID, code, codeVerifier: pending.codeVerifier, redirectUri: mcpCallbackUri() })
+  const reg = mcpRegistrationFor(pending.environment)
+  const data = await exchange({ grant: "code", environment: pending.environment, clientId: pending.clientId, clientSecret: reg?.clientSecret, code, codeVerifier: pending.codeVerifier, redirectUri: mcpCallbackUri() })
   const tokens: McpTokens = {
     environment: pending.environment,
     accessToken: data.access_token,
@@ -113,7 +118,9 @@ export async function getMcpToken(environment: string): Promise<string | null> {
     return null
   }
   try {
-    const data = await exchange({ grant: "refresh", environment, clientId: MCP_CLIENT_ID, refreshToken: t.refreshToken })
+    const reg = mcpRegistrationFor(environment)
+    if (!reg) throw new Error("No MCP registration")
+    const data = await exchange({ grant: "refresh", environment, clientId: reg.clientId, clientSecret: reg.clientSecret, refreshToken: t.refreshToken })
     const next: McpTokens = { environment, accessToken: data.access_token, refreshToken: data.refresh_token ?? t.refreshToken, expiresAt: Date.now() + data.expires_in * 1000 }
     writeMcpTokens(next)
     return next.accessToken

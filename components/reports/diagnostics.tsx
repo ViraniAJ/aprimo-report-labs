@@ -6,7 +6,8 @@ import { ReportCard, LoadingBlock } from "@/components/report-labs/ui"
 import { queryAnalytics, str, toGuid, analyticsId, TITLE_DIM, TYPE_DIM } from "@/lib/analytics"
 import { cardExpander } from "@/lib/core"
 import { Button } from "@/components/ui/button"
-import { MCP_CONFIGURED, readMcpTokens, getMcpToken, startMcpConsent, clearMcpTokens } from "@/lib/mcp-auth"
+import { mcpConfigured, readMcpTokens, getMcpToken, startMcpConsent, clearMcpTokens } from "@/lib/mcp-auth"
+import { openConnectionManager } from "@/lib/profiles"
 
 // Shows what the APIs actually return for a handful of records, so preview and
 // lookup problems can be diagnosed on screen instead of guessed at.
@@ -244,9 +245,9 @@ function McpBridgeCheck() {
   return (
     <ReportCard
       title="Aprimo MCP bridge"
-      subtitle={MCP_CONFIGURED ? "Second consent (scope mcp), server-side bridge, and the read-only tool allowlist" : "Not configured: set NEXT_PUBLIC_APRIMO_MCP_CLIENT_ID and APRIMO_MCP_CLIENT_SECRET"}
+      subtitle={mcpConfigured(p.environment) ? "Second consent (scope mcp), server-side bridge, and the read-only tool allowlist" : `No MCP registration for ${p.environment}: add its MCP client id and secret to the environment's connection profile`}
       actions={
-        MCP_CONFIGURED ? (
+        mcpConfigured(p.environment) ? (
           <div className="flex items-center gap-2">
             {enabled ? (
               <>
@@ -257,7 +258,9 @@ function McpBridgeCheck() {
               <Button size="sm" className="h-7 text-xs" onClick={() => startMcpConsent(p.environment)}>Enable Aprimo tools</Button>
             )}
           </div>
-        ) : undefined
+        ) : (
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={openConnectionManager}>Add MCP registration</Button>
+        )
       }
     >
       <div className="text-xs font-mono break-all flex flex-col gap-1">
