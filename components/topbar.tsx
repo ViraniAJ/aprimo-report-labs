@@ -10,7 +10,7 @@ import { Wordmark } from "@/components/brand"
 import { AprimoWordmark } from "@/components/aprimo-logo"
 import { adminApi } from "@/lib/admin-api"
 
-const ALL_FROM_ENV = !!(process.env.NEXT_PUBLIC_APRIMO_ENVIRONMENT && process.env.NEXT_PUBLIC_APRIMO_CLIENT_ID)
+const manageConnections = () => window.dispatchEvent(new CustomEvent("aprimo:open-config", { detail: { manage: true } }))
 
 export function TopBar() {
   const { isConnected, connection } = useAprimo()
@@ -48,18 +48,18 @@ export function TopBar() {
           <Link href="/architecture" className="hidden md:inline text-xs text-muted-foreground hover:text-foreground mr-1">Architecture</Link>
           {admin && <Link href="/admin" className="hidden md:inline text-xs text-muted-foreground hover:text-foreground mr-1">Admin</Link>}
           {connection?.environment && (
-            <span className="hidden sm:inline-flex items-center gap-2 rounded-full border border-border px-2.5 py-1 text-xs font-mono">
+            <button onClick={manageConnections} className="hidden sm:inline-flex items-center gap-2 rounded-full border border-border px-2.5 py-1 text-xs font-mono hover:bg-muted transition-colors" title="Switch environment">
               <span className={`h-1.5 w-1.5 rounded-full ${isConnected ? "bg-signal" : "bg-muted-foreground"}`} />
               {connection.environment}.dam.aprimo.com
-            </span>
+            </button>
           )}
           {!isConnected && (
             <Button size="sm" onClick={() => window.dispatchEvent(new Event("aprimo:open-config"))}>
               <LogIn className="h-4 w-4 mr-1.5" /> Connect
             </Button>
           )}
-          {!ALL_FROM_ENV && isConnected && (
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="Connections" onClick={() => window.dispatchEvent(new Event("aprimo:open-config"))}>
+          {isConnected && (
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="Switch or manage environments" onClick={manageConnections}>
               <Settings className="h-4 w-4" />
             </Button>
           )}

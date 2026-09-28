@@ -9,9 +9,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { grant, environment, clientId } = body
-    const clientSecret = process.env.APRIMO_MCP_CLIENT_SECRET
     if (!environment || !clientId || !grant) return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     if (!/^[a-z0-9-]+$/i.test(environment)) return NextResponse.json({ error: "Invalid environment" }, { status: 400 })
+    // The MCP registration is per environment; APRIMO_MCP_CLIENT_SECRET_<ENV> overrides the default.
+    const clientSecret = process.env[`APRIMO_MCP_CLIENT_SECRET_${String(environment).toUpperCase().replace(/-/g, "_")}`] || process.env.APRIMO_MCP_CLIENT_SECRET
     if (!clientSecret) return NextResponse.json({ error: "APRIMO_MCP_CLIENT_SECRET is not configured on the server" }, { status: 503 })
 
     const params = new URLSearchParams()

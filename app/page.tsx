@@ -471,6 +471,7 @@ function Landing() {
                 <LogIn className="h-4 w-4 mr-2" /> Connect to Aprimo
               </Button>
               <span className="text-xs text-muted-foreground">Uses your existing Aprimo login.</span>
+              <button onClick={() => window.dispatchEvent(new CustomEvent("aprimo:open-config", { detail: { manage: true } }))} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">Other environment</button>
               <a href="/architecture" className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">How it&apos;s built</a>
             </div>
           </div>

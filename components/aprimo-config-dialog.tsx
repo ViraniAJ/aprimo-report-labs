@@ -11,13 +11,15 @@ import { Pencil, Trash2, Plus, ArrowLeft } from "lucide-react"
 
 // Connection handling for Report Labs.
 //
-// Deployed mode: NEXT_PUBLIC_APRIMO_ENVIRONMENT and NEXT_PUBLIC_APRIMO_CLIENT_ID
-// are set, the client secret lives server-side (APRIMO_CLIENT_SECRET), and the
-// app starts the PKCE flow automatically on any page except the landing page.
+// A deployment usually names a default environment (NEXT_PUBLIC_APRIMO_ENVIRONMENT
+// and NEXT_PUBLIC_APRIMO_CLIENT_ID, secret server-side). That appears as a
+// built-in profile. Users can add further environments as browser-side
+// profiles (environment + client id of a PKCE registration whose redirect URI
+// is this site's /oauth/callback, plus that registration's secret unless the
+// server holds APRIMO_CLIENT_SECRET_<ENV>).
 //
-// Self-managed mode: no env vars, the user keeps connection profiles in the
-// browser. A profile needs only environment and client id; a secret is
-// optional and only used when the server has none.
+// "Connect" goes straight to the last-used profile; the gear, the environment
+// pill, and "Other environment" open this dialog to switch or manage.
 
 const ENV_ENVIRONMENT = process.env.NEXT_PUBLIC_APRIMO_ENVIRONMENT ?? ""
 const ENV_CLIENT_ID = process.env.NEXT_PUBLIC_APRIMO_CLIENT_ID ?? ""
@@ -29,7 +31,13 @@ interface ConnectionProfile {
   environment: string
   clientId: string
   clientSecret: string
+  /** The deployment's default, from env vars. Cannot be edited or deleted. */
+  builtIn?: boolean
 }
+
+const DEFAULT_PROFILE: ConnectionProfile | null = ALL_FROM_ENV
+  ? { id: "default", name: `${ENV_ENVIRONMENT} (default)`, environment: ENV_ENVIRONMENT, clientId: ENV_CLIENT_ID, clientSecret: "", builtIn: true }
+  : null
 
 const PROFILES_KEY = "report_labs_profiles"
 const LAST_PROFILE_KEY = "report_labs_last_profile_id"
@@ -44,7 +52,19 @@ function loadProfiles(): ConnectionProfile[] {
 }
 
 function persistProfiles(profiles: ConnectionProfile[]) {
-  localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles))
+  localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles.filter((p) => !p.builtIn)))
+}
+
+/** Built-in default first, then the user's own. */
+function allProfiles(): ConnectionProfile[] {
+  return DEFAULT_PROFILE ? [DEFAULT_PROFILE, ...loadProfiles()] : loadProfiles()
+}
+
+/** The profile "Connect" should use without asking: last used, else the default. */
+function lastUsedProfile(): ConnectionProfile | null {
+  const all = allProfiles()
+  const lastId = localStorage.getItem(LAST_PROFILE_KEY)
+  return (lastId ? all.find((p) => p.id === lastId) : null) ?? DEFAULT_PROFILE ?? all[0] ?? null
 }
 
 function startOAuth(environment: string, clientId: string, clientSecret?: string) {
@@ -74,16 +94,22 @@ export function AprimoConfigDialog() {
   const [formClientSecret, setFormClientSecret] = useState("")
   const hasAttempted = useRef(false)
 
-  function openDialog() {
-    if (ALL_FROM_ENV) {
-      startOAuth(ENV_ENVIRONMENT, ENV_CLIENT_ID)
-      return
-    }
-    const loaded = loadProfiles()
+  function showDialog() {
+    const loaded = allProfiles()
     setProfiles(loaded)
     setView(loaded.length ? "list" : "edit")
     setEditing(null)
     setOpen(true)
+  }
+
+  // Plain "connect" goes to the last-used environment; a manage request
+  // (gear, environment pill, "Other environment") opens the picker.
+  function openDialog(e: Event) {
+    const manage = !!(e as CustomEvent<{ manage?: boolean }>).detail?.manage
+    if (manage) return showDialog()
+    const profile = lastUsedProfile()
+    if (profile) return connectProfile(profile)
+    showDialog()
   }
 
   useEffect(() => {
@@ -100,21 +126,9 @@ export function AprimoConfigDialog() {
     const isLanding = window.location.pathname === "/" && !window.location.search
     if (isLanding) return
     hasAttempted.current = true
-    if (ALL_FROM_ENV) {
-      startOAuth(ENV_ENVIRONMENT, ENV_CLIENT_ID)
-      return
-    }
-    const loaded = loadProfiles()
-    setProfiles(loaded)
-    if (loaded.length === 0) {
-      setView("edit")
-      setOpen(true)
-    } else {
-      const lastId = localStorage.getItem(LAST_PROFILE_KEY)
-      const profile = (lastId ? loaded.find((p) => p.id === lastId) : null) ?? loaded[0]
-      localStorage.setItem(LAST_PROFILE_KEY, profile.id)
-      startOAuth(profile.environment, profile.clientId, profile.clientSecret || undefined)
-    }
+    const profile = lastUsedProfile()
+    if (profile) connectProfile(profile)
+    else showDialog()
   }, [isConnected])
 
   function connectProfile(profile: ConnectionProfile) {
@@ -171,13 +185,12 @@ export function AprimoConfigDialog() {
     const updated = profiles.filter((p) => p.id !== id)
     persistProfiles(updated)
     setProfiles(updated)
+    if (localStorage.getItem(LAST_PROFILE_KEY) === id) localStorage.removeItem(LAST_PROFILE_KEY)
   }
 
   const envTrimmed = formEnvironment.trim()
   const envValid = /^[a-z0-9-]+$/i.test(envTrimmed)
   const formValid = !!(envTrimmed && envValid && formClientId.trim())
-
-  if (ALL_FROM_ENV) return null
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -186,7 +199,7 @@ export function AprimoConfigDialog() {
           <>
             <DialogHeader>
               <DialogTitle>Connect to Aprimo</DialogTitle>
-              <DialogDescription>{profiles.length === 0 ? "Add an environment to get started." : "Pick an environment to connect, or manage saved ones."}</DialogDescription>
+              <DialogDescription>{profiles.length === 0 ? "Add an environment to get started." : "Pick an environment to connect, or add another. Saved questions and reports are kept per environment."}</DialogDescription>
             </DialogHeader>
             <div className="space-y-2 py-1 min-h-[60px]">
               {profiles.map((p) => (
@@ -195,12 +208,16 @@ export function AprimoConfigDialog() {
                     <div className="text-sm font-medium truncate">{p.name}</div>
                     <div className="text-xs text-muted-foreground font-mono truncate">{p.environment}.dam.aprimo.com</div>
                   </div>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Edit" onClick={() => openEdit(p)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-destructive hover:text-destructive" title="Delete" onClick={() => deleteProfile(p.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  {!p.builtIn && (
+                    <>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Edit" onClick={() => openEdit(p)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-destructive hover:text-destructive" title="Delete" onClick={() => deleteProfile(p.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  )}
                   <Button size="sm" className="h-7 shrink-0" onClick={() => connectProfile(p)}>
                     Connect
                   </Button>
@@ -236,8 +253,9 @@ export function AprimoConfigDialog() {
                 <Input id="profile-client-id" placeholder="XXXXXXXX-XXXX" value={formClientId} onChange={(e) => setFormClientId(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="profile-client-secret">Client secret (optional)</Label>
-                <Input id="profile-client-secret" type="password" placeholder="Only if the server does not hold one" value={formClientSecret} onChange={(e) => setFormClientSecret(e.target.value)} />
+                <Label htmlFor="profile-client-secret">Client secret</Label>
+                <Input id="profile-client-secret" type="password" placeholder="From the same registration" value={formClientSecret} onChange={(e) => setFormClientSecret(e.target.value)} />
+                <p className="text-xs text-muted-foreground">Needed unless this deployment holds a secret for that environment. Stored only in this browser and sent only to this site&apos;s token exchange.</p>
               </div>
             </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
